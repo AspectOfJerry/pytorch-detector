@@ -1,0 +1,6 @@
+numpy
+pandas
+torchvision~=0.16.0
+matplotlib
+torch~=2.1.0
+Pillow~=9.3.0
