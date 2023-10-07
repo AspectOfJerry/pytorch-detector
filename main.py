@@ -5,10 +5,10 @@ import torchvision
 import torchvision.transforms as transforms
 from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
+from utils import log, Ccodes
 
 # Define the custom dataset
 from custom_dataset import CustomDataset
-from utils import log, Ccodes
 
 # Define your data directory
 DATA_DIR = "./dataset"  # Replace with your data directory
@@ -25,12 +25,16 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 data_transform = transforms.Compose([
     transforms.RandomRotation(degrees=[-45, 45]),  # random rotate
     transforms.RandomHorizontalFlip(p=0.5),  # random flip
-    transforms.ToTensor()  # convert to PyTorch tensor
+    transforms.ToTensor(),  # convert to PyTorch tensor
+    # transforms.Resize((300, 300))  # resize the image to 300x300
 ])
 
 # Create training and validation datasets
 train_dataset = CustomDataset(DATA_DIR, "train", transform=data_transform)
 test_dataset = CustomDataset(DATA_DIR, "test", transform=data_transform)
+
+log(f"Number of training images: {len(train_dataset)}", Ccodes.BLUE)
+log(f"Number of test images: {len(test_dataset)}", Ccodes.BLUE)
 
 # Create data loaders
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
@@ -52,33 +56,6 @@ model = FasterRCNN(
 # Define the optimizer and learning rate scheduler
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
-
-
-# Define the evaluation function
-def evaluate_model(_model, _test_loader, device):
-    _model.eval()
-    coco_evaluator = torchvision.ops.CocoEvaluator(
-        torchvision.datasets.CocoDetection(DATA_DIR, "test", transform=None),
-        iou_types=["bbox"],
-    )
-
-    with torch.no_grad():
-        for _images, _targets in _test_loader:
-            _images = list(image.to(device) for image in _images)
-            _targets = [{k: v.to(device) for k, v in t.items()} for t in _targets]
-
-            outputs = _model(_images)
-
-            # Calculate evaluation metrics
-            for target, output in zip(_targets, outputs):
-                coco_evaluator.update(target, output)
-
-    # Compute and print evaluation metrics
-    coco_evaluator.synchronize_between_processes()
-    coco_evaluator.accumulate()
-    coco_evaluator.summarize()
-    log("Evaluation complete.", Ccodes.GREEN)
-
 
 # Training loop
 for epoch in range(NUM_EPOCHS):
@@ -103,6 +80,3 @@ for epoch in range(NUM_EPOCHS):
 # Save the trained model
 torch.save(model.state_dict(), model_save_path)
 log(f"Trained model saved at {model_save_path}", Ccodes.GREEN)
-
-# Comment this line if you don't want to evaluate the model on the test set.
-evaluate_model(model, test_loader, DEVICE)

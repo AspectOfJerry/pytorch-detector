@@ -1,9 +1,9 @@
 import os
 import xml.etree.ElementTree as ET
-
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
+from utils import log, Ccodes
 
 label_to_index_mapping = {
     "cone": 0,
@@ -11,44 +11,17 @@ label_to_index_mapping = {
 }
 
 
-class CustomDataset(Dataset):
-
-    def __init__(self, data_dir, split, transform=None):
-        self.data_dir = data_dir
-        self.split = split  # "train" or "test", specify the split
-        self.transform = transform
-
-        # Define the image and annotation directories for train and test splits
-        self.image_dir = os.path.join(data_dir, "images", split)
-        self.annotation_dir = os.path.join(data_dir, "annotations", split)
-
-        # Get a list of image file names
+class CustomDataset(torch.utils.data.Dataset):
+    def __init__(self, root_dir, data_split, transform=None):
+        self.root_dir = root_dir
+        self.data_split = data_split  # "train" or "test"
+        self.image_dir = os.path.join(root_dir, "images", data_split)
+        self.annotation_dir = os.path.join(root_dir, "annotations", data_split)
         self.image_files = os.listdir(self.image_dir)
+        self.transform = transform
 
     def __len__(self):
         return len(self.image_files)
-
-    def parse_xml_annotation(self, xml_file):
-        tree = ET.parse(xml_file)
-        root = tree.getroot()
-
-        bounding_boxes = []
-
-        for obj in root.findall("object"):
-            label = obj.find("name").text  # Extract the label as a string
-
-            bbox = obj.find("bndbox")
-            x1 = int(bbox.find("xmin").text)
-            y1 = int(bbox.find("ymin").text)
-            x2 = int(bbox.find("xmax").text)
-            y2 = int(bbox.find("ymax").text)
-
-            bounding_boxes.append({
-                "boxes": torch.tensor([x1, y1, x2, y2], dtype=torch.float32),
-                "labels": [label]  # Keep label as a list of strings
-            })
-
-        return bounding_boxes
 
     def __getitem__(self, idx):
         # Load an image
@@ -56,20 +29,41 @@ class CustomDataset(Dataset):
         image = Image.open(image_file).convert("RGB")
 
         # Load and parse the corresponding XML annotation file
-        xml_file = os.path.splitext(image_file)[0] + ".xml"
-        xml_file = os.path.join(self.annotation_dir, xml_file)
+        xml_file = os.path.join(self.annotation_dir, f"{os.path.splitext(self.image_files[idx])[0]}.xml")
         bounding_boxes = self.parse_xml_annotation(xml_file)
 
-        target = {}
-        target["boxes"] = torch.stack([bb["boxes"] for bb in bounding_boxes])
+        # Create a list of bounding boxes for this image
+        target_boxes = [torch.tensor(bb["boxes"], dtype=torch.float32) for bb in bounding_boxes]
 
         # Convert the list of labels to a list of class indices
         labels = [label for bb in bounding_boxes for label in bb["labels"]]
         label_indices = [label_to_index_mapping[label] for label in labels]
 
-        target["labels"] = torch.tensor(label_indices, dtype=torch.int64)
+        target = {
+            "boxes": target_boxes,
+            "labels": torch.tensor(label_indices, dtype=torch.int64)
+        }
 
         if self.transform:
-            image, target = self.transform(image, target)
+            image = self.transform(image)
 
+        log(f"- Image shape: {image.shape}", Ccodes.GRAY)
         return image, target
+
+    def parse_xml_annotation(self, xml_file):
+        log(f"Parsing {xml_file}")
+        tree = ET.parse(xml_file)
+        root = tree.getroot()
+
+        bounding_boxes = []
+        for obj in root.findall("object"):
+            label = obj.find("name").text
+            bbox = obj.find("bndbox")
+            xmin = int(bbox.find("xmin").text)
+            ymin = int(bbox.find("ymin").text)
+            xmax = int(bbox.find("xmax").text)
+            ymax = int(bbox.find("ymax").text)
+            bounding_boxes.append({"labels": [label], "boxes": [xmin, ymin, xmax, ymax]})
+
+        log(f"- Bounding boxes: {bounding_boxes}", Ccodes.GRAY)
+        return bounding_boxes
