@@ -1,108 +1,119 @@
-import os
-
+#main.py
+from torchvision.io.image import read_image
+from torchvision.models import detection, mobilenetv3
+from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2, FasterRCNN_ResNet50_FPN_V2_Weights, FasterRCNN
+from torchvision.models.resnet import ResNet50_Weights
+from torchvision.utils import draw_bounding_boxes
+from torchvision.transforms.functional import to_pil_image
+from torchvision import transforms
+from torch import nn
+from torchinfo import summary
+from pathlib import Path
+import numpy as np
+import argparse
+import pickle
 import torch
-import torchvision
-import torchvision.transforms as transforms
-from torchvision.models.detection import FasterRCNN
-from torchvision.models.detection.rpn import AnchorGenerator
+import cv2
+import ssl
+from PIL import Image
+from gmodular import data_setup, engine
+from timeit import default_timer as timer
 
-# Define the custom dataset
-from custom_dataset import CustomDataset
-from utils import log, Ccodes
+#links the unverified context to the default https context, anihilating the need for an effective SSL certificate to download pretrained models
+ssl._create_default_https_context = ssl._create_unverified_context
 
-# Define your data directory
-DATA_DIR = "./dataset"  # Replace with your data directory
-OUTPUT_DIR = "./output"  # Replace with your output directory
-model_save_path = os.path.join(OUTPUT_DIR, "trained_model.pth")
+DATA_PATH = Path("data/")
+TRAIN_PATH = DATA_PATH / "train"
+TEST_PATH = DATA_PATH / "test"
+VALIDATION_PATH = DATA_PATH / "validate"
+def checkPaths(path):
+    if(path.is_dir()):
+        print(f"Directory {path} is set for procedure")
+    else:
+        print(f"Directory {path} is inexistant, making one right now...")
+        path.mkdir(parents=True, exist_ok=True)
 
-NUM_CLASSES = 3  # Number of classes **including background (+1)**
-BATCH_SIZE = 4
-NUM_EPOCHS = 12
-LEARNING_RATE = 0.001
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+checkPaths(TRAIN_PATH)
+checkPaths(TEST_PATH)
+NUM_CLASSES = 1;
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Define data transforms
-data_transform = transforms.Compose([
-    transforms.RandomRotation(degrees=[-45, 45]),  # random rotate
-    transforms.RandomHorizontalFlip(p=0.5),  # random flip
-    transforms.ToTensor()  # convert to PyTorch tensor
+manual_transforms = transforms.Compose([
+    transforms.Resize((640, 640)), # 1. Reshape all images to 224x224 (though some models may require different sizes)
+    transforms.ToTensor(), # 2. Turn image values to between 0 & 1 
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], # 3. A mean of [0.485, 0.456, 0.406] (across each colour channel)
+                         std=[0.229, 0.224, 0.225]) # 4. A standard deviation of [0.229, 0.224, 0.225] (across each colour channel),
 ])
 
-# Create training and validation datasets
-train_dataset = CustomDataset(DATA_DIR, "train", transform=data_transform)
-test_dataset = CustomDataset(DATA_DIR, "test", transform=data_transform)
+train_dataset, test_dataset = data_setup.create_YoloDatasets(TRAIN_PATH, TEST_PATH, manual_transforms)
+print(train_dataset)
+train_dataloader, test_dataloader, class_names = data_setup.create_dataloaders_from_datasets(train_set=train_dataset, test_set=test_dataset, batch_size=32) 
+#train_dataloader, test_dataloader, class_names = data_setup.create_dataloaders(TRAIN_PATH, TEST_PATH, manual_transforms, 32)
+#model = createModel(FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT, None, None, None, None, None)
 
-# Create data loaders
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
+#get pretrained weights
+weights=FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
+#create model from pretrained weights
+model = fasterrcnn_resnet50_fpn_v2(weights=weights, box_score_thresh=0.9)
 
-# Define the Faster R-CNN model with a MobileNetV3 backbone
-backbone = torchvision.models.mobilenet_v3_small(pretrained=True)
-backbone.out_channels = 960  # Output channels of the backbone
-anchor_generator = AnchorGenerator(sizes=((32, 64, 128, 256, 512),), aspect_ratios=((0.5, 1.0, 2.0),) * 5)
-roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=["0"], output_size=7, sampling_ratio=2)
+#freeze all layers
+for param in model.parameters():
+    param.requires_grad = False
+#ready seeds
+torch.manual_seed(42)
+torch.cuda.manual_seed(42)
 
-model = FasterRCNN(
-    backbone,
-    num_classes=NUM_CLASSES,
-    rpn_anchor_generator=anchor_generator,
-    box_roi_pool=roi_pooler
-).to(DEVICE)
+#create output_shape from number of labels
+output_shape = len(train_dataset.classes)
+#store the original in_features of cls_store layer
+in_features = model.roi_heads.box_predictor.cls_score.in_features
+#change cls_store and bbox_pred layers to use output_shape as the out_features parameter
+model.roi_heads.box_predictor.cls_score = torch.nn.Linear(
+        in_features=in_features, out_features=output_shape, bias=True
+)
+model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
+        in_features=in_features, out_features=output_shape * 4, bias=True
+)
+#print summary
+print(output_shape)
+print(summary(model=model, 
+        input_size=(32, 3, 640, 640), # make sure this is "input_size", not "input_shape"
+        # col_names=["input_size"], # uncomment for smaller output
+        col_names=["input_size", "output_size", "num_params", "trainable"],
+        col_width=20,
+        row_settings=["var_names"]
+))
 
-# Define the optimizer and learning rate scheduler
-optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
+#train
+loss_fn = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
+start_time = timer()
+results = engine.train(
+        model,
+        train_dataloader,
+        test_dataloader,
+        optimizer,
+        loss_fn,
+        5,
+        DEVICE)
+end_timer = timer()
+print(f"[INFO] Total training time: {end_time - start_time:.3f} seconds")
 
-# Define the evaluation function
-def evaluate_model(_model, _test_loader, device):
-    _model.eval()
-    coco_evaluator = torchvision.ops.CocoEvaluator(
-        torchvision.datasets.CocoDetection(DATA_DIR, "test", transform=None),
-        iou_types=["bbox"],
-    )
+#prediction
 
-    with torch.no_grad():
-        for _images, _targets in _test_loader:
-            _images = list(image.to(device) for image in _images)
-            _targets = [{k: v.to(device) for k, v in t.items()} for t in _targets]
+model.eval()
 
-            outputs = _model(_images)
+#predict(model, initializeInferenceTransform(FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT), read_image("car.jpg"))
+img = read_image("cubesandcones.jpeg")
+preprocess = weights.transforms()
+batch = [preprocess(img)]
+prediction = model(batch)[0]
+labels = [weights.meta["categories"][i] for i in prediction["labels"]]
+box = draw_bounding_boxes(img, boxes=prediction["boxes"],
+                          labels=labels,
+                          colors="red",
+                          width=4, font_size=30)
+im = to_pil_image(box.detach())
+im.show()
 
-            # Calculate evaluation metrics
-            for target, output in zip(_targets, outputs):
-                coco_evaluator.update(target, output)
-
-    # Compute and print evaluation metrics
-    coco_evaluator.synchronize_between_processes()
-    coco_evaluator.accumulate()
-    coco_evaluator.summarize()
-    log("Evaluation complete.", Ccodes.GREEN)
-
-
-# Training loop
-for epoch in range(NUM_EPOCHS):
-    model.train()
-    for images, targets in train_loader:
-        images = list(image.to(DEVICE) for image in images)
-        targets = [{k: v.to(DEVICE) for k, v in t.items()} for t in targets]
-
-        loss_dict = model(images, targets)
-        losses = sum(loss for loss in loss_dict.values())
-
-        optimizer.zero_grad()
-        losses.backward()
-        optimizer.step()
-
-    # Update the learning rate
-    lr_scheduler.step()
-
-    log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Loss: {losses.item()}")
-    log(f"Learning rate: {optimizer.param_groups[0]['lr']}\n")
-
-# Save the trained model
-torch.save(model.state_dict(), model_save_path)
-log(f"Trained model saved at {model_save_path}", Ccodes.GREEN)
-
-# Comment this line if you don't want to evaluate the model on the test set.
-evaluate_model(model, test_loader, DEVICE)

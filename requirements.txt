@@ -1,6 +1,6 @@
-numpy
-pandas
-torchvision~=0.16.0
-matplotlib
-torch~=2.1.0
-Pillow~=9.3.0
+torch==2.1
+torchvision==0.16
+torchinfo==1.8.0
+torchaudio==2.1.0
+tqdm==4.66.1
+opencv-contrib-python==4.8.1.78
