@@ -16,7 +16,7 @@ OUTPUT_DIR = "./output"  # Replace with your output directory
 model_save_path = os.path.join(OUTPUT_DIR, "trained_model.pth")
 
 NUM_CLASSES = 3  # Number of classes **including background (+1)**
-BATCH_SIZE = 4
+BATCH_SIZE = 1
 NUM_EPOCHS = 12
 LEARNING_RATE = 0.001
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -62,20 +62,20 @@ for epoch in range(NUM_EPOCHS):
     model.train()
     for images, targets in train_loader:
         images = list(image.to(DEVICE) for image in images)
-        targets = [{k: v.to(DEVICE) for k, v in t.items()} for t in targets]
+        targets_tensor = [{key: torch.tensor(value) for key, value in t.items()} for t in targets[0]]
 
-        loss_dict = model(images, targets)
+        loss_dict = model(images, targets_tensor)
         losses = sum(loss for loss in loss_dict.values())
 
         optimizer.zero_grad()
         losses.backward()
         optimizer.step()
 
-    # Update the learning rate
-    lr_scheduler.step()
+        # Update the learning rate
+        lr_scheduler.step()
 
-    log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Loss: {losses.item()}")
-    log(f"Learning rate: {optimizer.param_groups[0]['lr']}\n")
+        log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Loss: {loss_dict.item()}")
+        log(f"Learning rate: {optimizer.param_groups[0]['lr']}\n")
 
 # Save the trained model
 torch.save(model.state_dict(), model_save_path)
