@@ -21,6 +21,8 @@ NUM_EPOCHS = 12
 LEARNING_RATE = 0.001
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+log(f"Using device: {DEVICE}", Ccodes.BLUE)
+
 # Define data transforms
 data_transform = transforms.Compose([
     transforms.RandomRotation(degrees=[-45, 45]),  # random rotate
@@ -41,7 +43,7 @@ train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE,
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
 
 # Define the Faster R-CNN model with a MobileNetV3 backbone
-backbone = torchvision.models.mobilenet_v3_small(pretrained=True)
+backbone = torchvision.models.mobilenet_v3_small(weights=torchvision.models.MobileNet_V3_Small_Weights.DEFAULT)
 backbone.out_channels = 960  # Output channels of the backbone
 anchor_generator = AnchorGenerator(sizes=((32, 64, 128, 256, 512),), aspect_ratios=((0.5, 1.0, 2.0),) * 5)
 roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=["0"], output_size=7, sampling_ratio=2)
@@ -62,9 +64,13 @@ for epoch in range(NUM_EPOCHS):
     model.train()
     for images, targets in train_loader:
         images = list(image.to(DEVICE) for image in images)
-        targets_tensor = [{key: torch.tensor(value) for key, value in t.items()} for t in targets[0]]
+        print(f"Targets: {targets}")
+        print(f"Targets type: {type(targets)}")
+        targets_tensor = [{key: torch.tensor(value).to(DEVICE) for key, value in t.items()} for t in targets]
 
         loss_dict = model(images, targets_tensor)
+        for key, loss in loss_dict.items():
+            print(f"{key}: {loss}")
         losses = sum(loss for loss in loss_dict.values())
 
         optimizer.zero_grad()
@@ -74,7 +80,7 @@ for epoch in range(NUM_EPOCHS):
         # Update the learning rate
         lr_scheduler.step()
 
-        log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Loss: {loss_dict.item()}")
+        log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Loss: {loss_dict['loss'].item()}")
         log(f"Learning rate: {optimizer.param_groups[0]['lr']}\n")
 
 # Save the trained model
