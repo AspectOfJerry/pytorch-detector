@@ -16,7 +16,7 @@ OUTPUT_DIR = "./output"  # Replace with your output directory
 model_save_path = os.path.join(OUTPUT_DIR, "trained_model.pth")
 
 NUM_CLASSES = 3  # Number of classes **including background (+1)**
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 NUM_EPOCHS = 12
 LEARNING_RATE = 0.001
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -63,10 +63,12 @@ lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1
 for epoch in range(NUM_EPOCHS):
     model.train()
     for images, targets in train_loader:
-        images = list(image.to(DEVICE) for image in images)
+        images = torch.stack([image.to(DEVICE) for image in images])
+        print(f"Images shape: {images.shape}")
         print(f"Targets: {targets}")
         print(f"Targets type: {type(targets)}")
-        targets_tensor = [{key: torch.tensor(value).to(DEVICE) for key, value in t.items()} for t in targets]
+        targets_tensor = [{key: value.clone().detach().to(DEVICE) for key, value in t.items()} for t in targets]
+        print(f"Targets tensor shape: {targets_tensor[0]['boxes'].shape}")
 
         loss_dict = model(images, targets_tensor)
         for key, loss in loss_dict.items():

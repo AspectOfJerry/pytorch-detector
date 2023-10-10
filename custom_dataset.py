@@ -5,11 +5,6 @@ from PIL import Image
 from torch.utils.data import Dataset
 from utils import log, Ccodes
 
-label_to_index_mapping = {
-    "cone": 0,
-    "cube": 1,
-}
-
 
 class CustomDataset(torch.utils.data.Dataset):
     def __init__(self, root_dir, data_split, transform=None):
@@ -19,9 +14,7 @@ class CustomDataset(torch.utils.data.Dataset):
         self.annotation_dir = os.path.join(root_dir, "annotations", data_split)
         self.image_files = os.listdir(self.image_dir)
         self.transform = transform
-
-    def __len__(self):
-        return len(self.image_files)
+        self.label_to_index_mapping = {"cube": 0, "cone": 1}
 
     def __getitem__(self, idx):
         # Load an image
@@ -37,18 +30,46 @@ class CustomDataset(torch.utils.data.Dataset):
 
         # Convert the list of labels to a list of class indices
         labels = [label for bb in bounding_boxes for label in bb["labels"]]
-        label_indices = [label_to_index_mapping[label] for label in labels]
+        label_indices = [self.label_to_index_mapping[label] for label in labels]
 
-        target = {
+        targets = {
             "boxes": target_boxes,
-            "labels": torch.tensor(label_indices, dtype=torch.int64)
+            "labels": label_indices,
+            "num_boxes": len(target_boxes)
         }
 
         if self.transform:
-            image = self.transform(image)
+            image = self.transform(image)  # Pass only the image to the data transformation object
+            targets = {
+                "boxes": target_boxes,
+                "labels": label_indices,
+                "num_boxes": len(target_boxes)
+            }
 
-        log(f"- Image shape: {image.shape}", Ccodes.GRAY)
-        return image, target
+        return image, targets
+
+    def __len__(self):
+        return len(self.image_files)
+
+    def collate_fn(batch):
+        images = [item[0] for item in batch]
+        targets = [item[1] for item in batch]
+
+        # Pad the target tensors to have the same size
+        max_num_boxes = max(target["num_boxes"] for target in targets)
+        padded_targets = {
+            "boxes": torch.zeros((len(targets), max_num_boxes, 4), dtype=torch.float32),
+            "labels": torch.zeros((len(targets), max_num_boxes), dtype=torch.int64),
+            "num_boxes": torch.zeros(len(targets), dtype=torch.int64)
+        }
+
+        for i, target in enumerate(targets):
+            num_boxes = target["num_boxes"]
+            padded_targets["boxes"][i, :num_boxes] = target["boxes"]
+            padded_targets["labels"][i, :num_boxes] = target["labels"]
+            padded_targets["num_boxes"][i] = num_boxes
+
+        return torch.stack(images), padded_targets
 
     def parse_xml_annotation(self, xml_file):
         log(f"Parsing {xml_file}")
@@ -57,7 +78,7 @@ class CustomDataset(torch.utils.data.Dataset):
 
         bounding_boxes = []
         for obj in root.findall("object"):
-            label = obj.find("name").text
+            label = str(obj.find("name").text)  # Ensure label is a string
             bbox = obj.find("bndbox")
             xmin = int(bbox.find("xmin").text)
             ymin = int(bbox.find("ymin").text)
