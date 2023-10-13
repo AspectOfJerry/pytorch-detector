@@ -34,9 +34,6 @@ class CustomDataset(torch.utils.data.Dataset):
         labels = [label for bb in bounding_boxes for label in bb["labels"]]
         label_indices = [self.label_to_index_mapping[label] for label in labels]
 
-        print("-", labels)
-        print("-", label_indices)
-
         targets = {
             "boxes": target_boxes,
             "labels": label_indices,

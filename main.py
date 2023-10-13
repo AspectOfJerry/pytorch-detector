@@ -3,7 +3,6 @@ import os
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
 from utils import log, Ccodes
 
@@ -53,7 +52,7 @@ backbone.out_channels = 960  # Output channels of the backbone
 anchor_generator = AnchorGenerator(sizes=((32, 64, 128, 256, 512),), aspect_ratios=((0.5, 1.0, 2.0),) * 5)
 roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=["0"], output_size=7, sampling_ratio=2)
 
-model = FasterRCNN(
+model = torchvision.models.detection.FasterRCNN(
     backbone,
     num_classes=NUM_CLASSES,
     rpn_anchor_generator=anchor_generator,
@@ -68,19 +67,26 @@ lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1
 for epoch in range(NUM_EPOCHS):
     model.train()
     for images, targets in train_loader:
-        images = torch.stack([image.to(DEVICE) for image in images])
+        images = list(image for image in images)
+        # images = torch.stack([image.to(DEVICE) for image in images])
         print(f"Targets: {targets}")
         print(f"Targets type: {type(targets)}")
-        # targets_tensor = [{key: value.clone().detach().to(DEVICE) for key, value in t.items()} for t in targets]
-        # targets_tensor = [{key: torch.tensor(value) for key, value in t.items()} for t in targets[0]]
-        targets_tensor = []
-        for t in targets:
-            targets_tensor.append({key: torch.tensor(value) for key, value in t.items()})
-        print(f"Targets tensor: {targets_tensor}")
 
+        # targets_tensor = [{key: value.clone().detach().to(DEVICE) for key, value in target.items()} for target in targets]
+        # targets_tensor = [{key: torch.tensor(value) for key, value in t.items()} for t in targets[0]]
+
+        targets_tensor = []
+        for i in range(len(images)):
+            d = {}
+            d["boxes"] = targets[i]["boxes"]
+            d["labels"] = targets[i]["labels"]
+            targets_tensor.append(d)
+
+        print(f"Targets tensor: {targets_tensor}")
         print(f"Targets tensor shape: {targets_tensor[0]['boxes'].shape}")
 
-        print(images, targets_tensor)
+        # targets_tensor = [{key: value for key, value in t.items()} for t in targets_tensor]
+
         loss_dict = model(images, targets_tensor)
         for key, loss in loss_dict.items():
             print(f"{key}: {loss}")
