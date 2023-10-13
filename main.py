@@ -38,9 +38,14 @@ test_dataset = CustomDataset(DATA_DIR, "test", transform=data_transform)
 log(f"Number of training images: {len(train_dataset)}", Ccodes.BLUE)
 log(f"Number of test images: {len(test_dataset)}", Ccodes.BLUE)
 
+
+def collate_fn(batch):
+    return tuple(zip(*batch))
+
+
 # Create data loaders
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, collate_fn=collate_fn)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
 # Define the Faster R-CNN model with a MobileNetV3 backbone
 backbone = torchvision.models.mobilenet_v3_small(weights=torchvision.models.MobileNet_V3_Small_Weights.DEFAULT)
@@ -64,12 +69,18 @@ for epoch in range(NUM_EPOCHS):
     model.train()
     for images, targets in train_loader:
         images = torch.stack([image.to(DEVICE) for image in images])
-        print(f"Images shape: {images.shape}")
         print(f"Targets: {targets}")
         print(f"Targets type: {type(targets)}")
-        targets_tensor = [{key: value.clone().detach().to(DEVICE) for key, value in t.items()} for t in targets]
+        # targets_tensor = [{key: value.clone().detach().to(DEVICE) for key, value in t.items()} for t in targets]
+        # targets_tensor = [{key: torch.tensor(value) for key, value in t.items()} for t in targets[0]]
+        targets_tensor = []
+        for t in targets:
+            targets_tensor.append({key: torch.tensor(value) for key, value in t.items()})
+        print(f"Targets tensor: {targets_tensor}")
+
         print(f"Targets tensor shape: {targets_tensor[0]['boxes'].shape}")
 
+        print(images, targets_tensor)
         loss_dict = model(images, targets_tensor)
         for key, loss in loss_dict.items():
             print(f"{key}: {loss}")
