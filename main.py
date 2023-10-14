@@ -4,6 +4,7 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 from torchvision.models.detection.rpn import AnchorGenerator
+from torchinfo import summary
 from utils import log, Ccodes
 
 from custom_dataset import CustomDataset
@@ -51,12 +52,20 @@ backbone.out_channels = 960  # output channels of the backbone
 anchor_generator = AnchorGenerator(sizes=((32, 64, 128, 256, 512),), aspect_ratios=((0.5, 1.0, 2.0),) * 5)
 roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=["0"], output_size=7, sampling_ratio=2)
 
-model = torchvision.models.detection.FasterRCNN(
-    backbone,
-    num_classes=NUM_CLASSES,
-    rpn_anchor_generator=anchor_generator,
-    box_roi_pool=roi_pooler
+# model = torchvision.models.detection.FasterRCNN(
+#     backbone,
+#     num_classes=NUM_CLASSES,
+#     rpn_anchor_generator=anchor_generator,
+#     box_roi_pool=roi_pooler
+# ).to(DEVICE)
+
+
+model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(
+    weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
 ).to(DEVICE)
+
+print(summary(model, input_size=(BATCH_SIZE, 3, 3024, 3024), col_names=["input_size", "output_size", "trainable"]))
+# exit()
 
 # Define the optimizer and learning rate scheduler
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -71,7 +80,7 @@ for epoch in range(NUM_EPOCHS):
 
         [log(image.shape, Ccodes.GRAY) for image in images]
         log(f"Targets: {targets}", Ccodes.GRAY)
-        log(f"Targets type: {type(targets)}", Ccodes.GRAY)
+        # log(f"Targets type: {type(targets)}", Ccodes.GRAY)
 
         # targets_tensor = [{key: value.clone().detach().to(DEVICE) for key, value in target.items()} for target in targets]
         # targets_tensor = [{key: torch.tensor(value) for key, value in t.items()} for t in targets[0]]
