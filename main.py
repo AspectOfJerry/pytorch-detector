@@ -6,15 +6,14 @@ import torchvision.transforms as transforms
 from torchvision.models.detection.rpn import AnchorGenerator
 from utils import log, Ccodes
 
-# Define the custom dataset
 from custom_dataset import CustomDataset
 
 # Define your data directory
-DATA_DIR = "./dataset"  # Replace with your data directory
-OUTPUT_DIR = "./output"  # Replace with your output directory
+DATA_DIR = "./dataset"
+OUTPUT_DIR = "./output"
 model_save_path = os.path.join(OUTPUT_DIR, "trained_model.pth")
 
-NUM_CLASSES = 3  # Number of classes **including background (+1)**
+NUM_CLASSES = 3  # number of classes **includes background (+1)**
 BATCH_SIZE = 2
 NUM_EPOCHS = 12
 LEARNING_RATE = 0.001
@@ -24,13 +23,13 @@ log(f"Using device: {DEVICE}", Ccodes.BLUE)
 
 # Define data transforms
 data_transform = transforms.Compose([
-    transforms.RandomRotation(degrees=[-45, 45]),  # random rotate
-    transforms.RandomHorizontalFlip(p=0.5),  # random flip
+    # transforms.RandomRotation(degrees=[-45, 45]),  # random rotate
+    # transforms.RandomHorizontalFlip(p=0.5),  # random flip
+    # transforms.Resize((756, 756), antialias=True),  # resize the image to (756, 756) 3024/4
     transforms.ToTensor(),  # convert to PyTorch tensor
-    # transforms.Resize((300, 300))  # resize the image to 300x300
 ])
 
-# Create training and validation datasets
+# Datasets
 train_dataset = CustomDataset(DATA_DIR, "train", transform=data_transform)
 test_dataset = CustomDataset(DATA_DIR, "test", transform=data_transform)
 
@@ -42,13 +41,13 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-# Create data loaders
+# Data loaders
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, collate_fn=collate_fn)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
-# Define the Faster R-CNN model with a MobileNetV3 backbone
+# Faster R-CNN with a MobileNetV3 backbone
 backbone = torchvision.models.mobilenet_v3_small(weights=torchvision.models.MobileNet_V3_Small_Weights.DEFAULT)
-backbone.out_channels = 960  # Output channels of the backbone
+backbone.out_channels = 960  # output channels of the backbone
 anchor_generator = AnchorGenerator(sizes=((32, 64, 128, 256, 512),), aspect_ratios=((0.5, 1.0, 2.0),) * 5)
 roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=["0"], output_size=7, sampling_ratio=2)
 
@@ -69,8 +68,10 @@ for epoch in range(NUM_EPOCHS):
     for images, targets in train_loader:
         images = list(image for image in images)
         # images = torch.stack([image.to(DEVICE) for image in images])
-        print(f"Targets: {targets}")
-        print(f"Targets type: {type(targets)}")
+
+        [log(image.shape, Ccodes.GRAY) for image in images]
+        log(f"Targets: {targets}", Ccodes.GRAY)
+        log(f"Targets type: {type(targets)}", Ccodes.GRAY)
 
         # targets_tensor = [{key: value.clone().detach().to(DEVICE) for key, value in target.items()} for target in targets]
         # targets_tensor = [{key: torch.tensor(value) for key, value in t.items()} for t in targets[0]]
@@ -82,12 +83,13 @@ for epoch in range(NUM_EPOCHS):
             d["labels"] = targets[i]["labels"]
             targets_tensor.append(d)
 
-        print(f"Targets tensor: {targets_tensor}")
-        print(f"Targets tensor shape: {targets_tensor[0]['boxes'].shape}")
+        log(f"Targets tensor: {targets_tensor}", Ccodes.GRAY)
+        [log(f"Targets tensor shape: {box['boxes'].shape}", Ccodes.GRAY) for box in targets_tensor]
 
         # targets_tensor = [{key: value for key, value in t.items()} for t in targets_tensor]
 
         loss_dict = model(images, targets_tensor)
+
         for key, loss in loss_dict.items():
             print(f"{key}: {loss}")
         losses = sum(loss for loss in loss_dict.values())
@@ -96,12 +98,12 @@ for epoch in range(NUM_EPOCHS):
         losses.backward()
         optimizer.step()
 
-        # Update the learning rate
+        # Update learning rate
         lr_scheduler.step()
 
         log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Loss: {loss_dict['loss'].item()}")
         log(f"Learning rate: {optimizer.param_groups[0]['lr']}\n")
 
-# Save the trained model
+# Save model .pth
 torch.save(model.state_dict(), model_save_path)
 log(f"Trained model saved at {model_save_path}", Ccodes.GREEN)

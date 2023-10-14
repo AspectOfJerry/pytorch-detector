@@ -21,14 +21,12 @@ class CustomDataset(torch.utils.data.Dataset):
         image_file = os.path.join(self.image_dir, self.image_files[idx])
         image = Image.open(image_file).convert("RGB")
 
-        # Load and parse the corresponding XML annotation file
+        # Load and parse the XML annotation file
         xml_file = os.path.join(self.annotation_dir, f"{os.path.splitext(self.image_files[idx])[0]}.xml")
         bounding_boxes = self.parse_xml_annotation(xml_file)
 
-        # Create a list of bounding boxes for this image
+        # Create a list of bounding boxes
         target_boxes = torch.tensor([bb["boxes"] for bb in bounding_boxes], dtype=torch.float32)
-
-        print("-", target_boxes)
 
         # Convert the list of labels to a list of class indices
         labels = [label for bb in bounding_boxes for label in bb["labels"]]
@@ -41,7 +39,7 @@ class CustomDataset(torch.utils.data.Dataset):
         }
 
         if self.transform:
-            image = self.transform(image)  # Pass only the image to the data transformation object
+            image = self.transform(image)
             targets = {
                 "boxes": target_boxes,
                 "labels": label_indices,
@@ -54,13 +52,13 @@ class CustomDataset(torch.utils.data.Dataset):
         return len(self.image_files)
 
     def parse_xml_annotation(self, xml_file):
-        log(f"Parsing {xml_file}")
+        log(f"Parsing {xml_file}", Ccodes.YELLOW)
         tree = ET.parse(xml_file)
         root = tree.getroot()
 
         bounding_boxes = []
         for obj in root.findall("object"):
-            label = str(obj.find("name").text)  # Ensure label is a string
+            label = str(obj.find("name").text)
             bbox = obj.find("bndbox")
             xmin = int(bbox.find("xmin").text)
             ymin = int(bbox.find("ymin").text)
@@ -68,5 +66,5 @@ class CustomDataset(torch.utils.data.Dataset):
             ymax = int(bbox.find("ymax").text)
             bounding_boxes.append({"labels": [label], "boxes": [xmin, ymin, xmax, ymax]})
 
-        log(f"- Bounding boxes: {bounding_boxes}", Ccodes.GRAY)
+        log(f"- Bounding boxes: {bounding_boxes}", Ccodes.GREEN)
         return bounding_boxes
