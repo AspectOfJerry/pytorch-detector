@@ -25,17 +25,18 @@ class CustomDataset(torch.utils.data.Dataset):
         xml_file = os.path.join(self.annotation_dir, f"{os.path.splitext(self.image_files[idx])[0]}.xml")
         bounding_boxes = self.parse_xml_annotation(xml_file)
 
+
         # Create a list of bounding boxes
         target_boxes = torch.tensor([bb["boxes"] for bb in bounding_boxes], dtype=torch.float32)
 
         # Convert the list of labels to a list of class indices
         labels = [label for bb in bounding_boxes for label in bb["labels"]]
-        label_indices = [self.label_to_index_mapping[label] for label in labels]
+        label_indices = torch.tensor([self.label_to_index_mapping[label] for label in labels], dtype=torch.int64)
 
         targets = {
             "boxes": target_boxes,
             "labels": label_indices,
-            "num_boxes": len(target_boxes)
+            # "num_boxes": len(target_boxes)
         }
 
         if self.transform:
@@ -43,7 +44,7 @@ class CustomDataset(torch.utils.data.Dataset):
             targets = {
                 "boxes": target_boxes,
                 "labels": label_indices,
-                "num_boxes": len(target_boxes)
+                # "num_boxes": len(target_boxes)
             }
 
         return image, targets

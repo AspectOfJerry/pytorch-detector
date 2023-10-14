@@ -16,8 +16,9 @@ model_save_path = os.path.join(OUTPUT_DIR, "trained_model.pth")
 
 NUM_CLASSES = 3  # number of classes **includes background (+1)**
 BATCH_SIZE = 2
-NUM_EPOCHS = 12
-LEARNING_RATE = 0.001
+NUM_EPOCHS = 1
+LEARNING_RATE = 0.01
+STEP_SIZE = 4
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 log(f"Using device: {DEVICE}", Ccodes.BLUE)
@@ -26,7 +27,7 @@ log(f"Using device: {DEVICE}", Ccodes.BLUE)
 data_transform = transforms.Compose([
     # transforms.RandomRotation(degrees=[-45, 45]),  # random rotate
     # transforms.RandomHorizontalFlip(p=0.5),  # random flip
-    # transforms.Resize((756, 756), antialias=True),  # resize the image to (756, 756) 3024/4
+    # transforms.Resize((320, 320), antialias=True),
     transforms.ToTensor(),  # convert to PyTorch tensor
 ])
 
@@ -46,73 +47,83 @@ def collate_fn(batch):
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, collate_fn=collate_fn)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
-# Faster R-CNN with a MobileNetV3 backbone
-backbone = torchvision.models.mobilenet_v3_small(weights=torchvision.models.MobileNet_V3_Small_Weights.DEFAULT)
-backbone.out_channels = 960  # output channels of the backbone
-anchor_generator = AnchorGenerator(sizes=((32, 64, 128, 256, 512),), aspect_ratios=((0.5, 1.0, 2.0),) * 5)
-roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=["0"], output_size=7, sampling_ratio=2)
-
-# model = torchvision.models.detection.FasterRCNN(
-#     backbone,
-#     num_classes=NUM_CLASSES,
-#     rpn_anchor_generator=anchor_generator,
-#     box_roi_pool=roi_pooler
-# ).to(DEVICE)
-
-
 model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(
     weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
 ).to(DEVICE)
 
-print(summary(model, input_size=(BATCH_SIZE, 3, 3024, 3024), col_names=["input_size", "output_size", "trainable"]))
-# exit()
+log("Model summary:", Ccodes.BLUE)
+print(summary(
+    model,
+    input_size=(BATCH_SIZE, 3, 3024, 3024),
+    verbose=0,
+    col_names=("input_size", "output_size", "num_params", "mult_adds")
+))
+
+log("Beginning training...", Ccodes.GREEN)
 
 # Define the optimizer and learning rate scheduler
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
+lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=0.1)
 
 # Training loop
 for epoch in range(NUM_EPOCHS):
     model.train()
     for images, targets in train_loader:
-        images = list(image for image in images)
+        images = [image.to(DEVICE) for image in images]
+        # images = list(image for image in images)
         # images = torch.stack([image.to(DEVICE) for image in images])
-
-        [log(image.shape, Ccodes.GRAY) for image in images]
-        log(f"Targets: {targets}", Ccodes.GRAY)
-        # log(f"Targets type: {type(targets)}", Ccodes.GRAY)
-
-        # targets_tensor = [{key: value.clone().detach().to(DEVICE) for key, value in target.items()} for target in targets]
-        # targets_tensor = [{key: torch.tensor(value) for key, value in t.items()} for t in targets[0]]
 
         targets_tensor = []
         for i in range(len(images)):
-            d = {}
-            d["boxes"] = targets[i]["boxes"]
-            d["labels"] = targets[i]["labels"]
+            d = {"boxes": targets[i]["boxes"], "labels": targets[i]["labels"]}
             targets_tensor.append(d)
-
-        log(f"Targets tensor: {targets_tensor}", Ccodes.GRAY)
-        [log(f"Targets tensor shape: {box['boxes'].shape}", Ccodes.GRAY) for box in targets_tensor]
-
-        # targets_tensor = [{key: value for key, value in t.items()} for t in targets_tensor]
 
         loss_dict = model(images, targets_tensor)
 
-        for key, loss in loss_dict.items():
-            print(f"{key}: {loss}")
-        losses = sum(loss for loss in loss_dict.values())
+        total_loss = sum(loss for loss in loss_dict.values())
 
         optimizer.zero_grad()
-        losses.backward()
+        total_loss.backward()
         optimizer.step()
 
         # Update learning rate
         lr_scheduler.step()
 
-        log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Loss: {loss_dict['loss'].item()}")
-        log(f"Learning rate: {optimizer.param_groups[0]['lr']}\n")
+        log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}]"
+            f"\n- Total loss: {total_loss.item()}"
+            f"\n- Learning rate: {optimizer.param_groups[0]['lr']}"
+            f"\n- Losses:\n"
+            + "\n".join([f"  - {key}: {loss}" for key, loss in loss_dict.items()])
+            + "\n",
+            Ccodes.BLUE)
+
+log("Training complete!", Ccodes.GREEN)
 
 # Save model .pth
+if not os.path.exists(OUTPUT_DIR):
+    os.makedirs(OUTPUT_DIR)
+
 torch.save(model.state_dict(), model_save_path)
 log(f"Trained model saved at {model_save_path}", Ccodes.GREEN)
+
+# Evaluate on test set
+log("Beginning evaluation...", Ccodes.GREEN)
+model.eval()  # Set the model to evaluation mode
+
+total_samples = 0
+correct_predictions = 0
+
+for images, targets in test_loader:
+    with torch.no_grad():
+        predictions = model(images)
+
+    for i in range(len(targets)):
+        true_labels = targets[i]["labels"]
+        pred_labels = predictions[i]["labels"]
+        print(true_labels, pred_labels)
+        correct_predictions += torch.sum(true_labels == pred_labels).item()
+        total_samples += len(true_labels)
+
+accuracy = correct_predictions / total_samples * 100.0
+
+log(f"Test Accuracy: {accuracy:.2f}%", Ccodes.GREEN)
