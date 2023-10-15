@@ -14,7 +14,11 @@ class CustomDataset(torch.utils.data.Dataset):
         self.annotation_dir = os.path.join(root_dir, "annotations", data_split)
         self.image_files = os.listdir(self.image_dir)
         self.transform = transform
-        self.label_to_index_mapping = {"cube": 0, "cone": 1}
+        self.label_to_index_mapping = {
+            "background": 0,
+            "cube": 1,
+            "cone": 2,
+        }
 
     def __getitem__(self, idx):
         # Load an image
@@ -24,7 +28,6 @@ class CustomDataset(torch.utils.data.Dataset):
         # Load and parse the XML annotation file
         xml_file = os.path.join(self.annotation_dir, f"{os.path.splitext(self.image_files[idx])[0]}.xml")
         bounding_boxes = self.parse_xml_annotation(xml_file)
-
 
         # Create a list of bounding boxes
         target_boxes = torch.tensor([bb["boxes"] for bb in bounding_boxes], dtype=torch.float32)
