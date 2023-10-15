@@ -14,7 +14,11 @@ class CustomDataset(torch.utils.data.Dataset):
         self.annotation_dir = os.path.join(root_dir, "annotations", data_split)
         self.image_files = os.listdir(self.image_dir)
         self.transform = transform
-        self.label_to_index_mapping = {"cube": 0, "cone": 1}
+        self.label_to_index_mapping = {
+            "background": 0,
+            "cube": 1,
+            "cone": 2,
+        }
 
     def __getitem__(self, idx):
         # Load an image
@@ -30,12 +34,12 @@ class CustomDataset(torch.utils.data.Dataset):
 
         # Convert the list of labels to a list of class indices
         labels = [label for bb in bounding_boxes for label in bb["labels"]]
-        label_indices = [self.label_to_index_mapping[label] for label in labels]
+        label_indices = torch.tensor([self.label_to_index_mapping[label] for label in labels], dtype=torch.int64)
 
         targets = {
             "boxes": target_boxes,
             "labels": label_indices,
-            "num_boxes": len(target_boxes)
+            # "num_boxes": len(target_boxes)
         }
 
         if self.transform:
@@ -43,7 +47,7 @@ class CustomDataset(torch.utils.data.Dataset):
             targets = {
                 "boxes": target_boxes,
                 "labels": label_indices,
-                "num_boxes": len(target_boxes)
+                # "num_boxes": len(target_boxes)
             }
 
         return image, targets
@@ -52,7 +56,7 @@ class CustomDataset(torch.utils.data.Dataset):
         return len(self.image_files)
 
     def parse_xml_annotation(self, xml_file):
-        log(f"Parsing {xml_file}", Ccodes.YELLOW)
+        log(f"Parsing {xml_file}")
         tree = ET.parse(xml_file)
         root = tree.getroot()
 
@@ -66,5 +70,5 @@ class CustomDataset(torch.utils.data.Dataset):
             ymax = int(bbox.find("ymax").text)
             bounding_boxes.append({"labels": [label], "boxes": [xmin, ymin, xmax, ymax]})
 
-        log(f"- Bounding boxes: {bounding_boxes}", Ccodes.GREEN)
+        log(f"- Bounding boxes: {bounding_boxes}", Ccodes.GRAY)
         return bounding_boxes
