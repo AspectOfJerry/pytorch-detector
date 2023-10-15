@@ -56,7 +56,7 @@ class CustomDataset(torch.utils.data.Dataset):
         return len(self.image_files)
 
     def parse_xml_annotation(self, xml_file):
-        log(f"Parsing {xml_file}", Ccodes.YELLOW)
+        log(f"Parsing {xml_file}")
         tree = ET.parse(xml_file)
         root = tree.getroot()
 
@@ -70,5 +70,5 @@ class CustomDataset(torch.utils.data.Dataset):
             ymax = int(bbox.find("ymax").text)
             bounding_boxes.append({"labels": [label], "boxes": [xmin, ymin, xmax, ymax]})
 
-        log(f"- Bounding boxes: {bounding_boxes}", Ccodes.GREEN)
+        log(f"- Bounding boxes: {bounding_boxes}", Ccodes.GRAY)
         return bounding_boxes

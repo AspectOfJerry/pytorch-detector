@@ -1,9 +1,9 @@
 import os
+import time
 
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from torchvision.models.detection.rpn import AnchorGenerator
 from torchinfo import summary
 from utils import log, Ccodes
 
@@ -14,10 +14,9 @@ DATA_DIR = "./dataset"
 OUTPUT_DIR = "./output"
 model_save_path = os.path.join(OUTPUT_DIR, "trained_model.pth")
 
-NUM_CLASSES = 3  # number of classes **includes background (+1)**
-BATCH_SIZE = 2
-NUM_EPOCHS = 1
-LEARNING_RATE = 0.01
+BATCH_SIZE = 4
+NUM_EPOCHS = 10
+LEARNING_RATE = 0.005
 STEP_SIZE = 4
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -65,13 +64,15 @@ log("Beginning training...", Ccodes.GREEN)
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=0.1)
 
+start_time = time.time()
+
 # Training loop
 for epoch in range(NUM_EPOCHS):
     model.train()
+    epoch_timer = time.time()
+    log(f"Entering epoch {epoch + 1}/{NUM_EPOCHS}...", Ccodes.GREEN)
     for images, targets in train_loader:
         images = [image.to(DEVICE) for image in images]
-        # images = list(image for image in images)
-        # images = torch.stack([image.to(DEVICE) for image in images])
 
         targets_tensor = []
         for i in range(len(images)):
@@ -89,7 +90,7 @@ for epoch in range(NUM_EPOCHS):
         # Update learning rate
         lr_scheduler.step()
 
-        log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}]"
+        log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}]:"
             f"\n- Total loss: {total_loss.item()}"
             f"\n- Learning rate: {optimizer.param_groups[0]['lr']}"
             f"\n- Losses:\n"
@@ -97,14 +98,16 @@ for epoch in range(NUM_EPOCHS):
             + "\n",
             Ccodes.BLUE)
 
-log("Training complete!", Ccodes.GREEN)
+    log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}] complete! Took {time.time() - epoch_timer:.3f} seconds", Ccodes.GREEN)
+
+log(f"Training complete! Took {time.time() - start_time:.3f} seconds", Ccodes.GREEN)
 
 # Save model .pth
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 
 torch.save(model.state_dict(), model_save_path)
-log(f"Trained model saved at {model_save_path}", Ccodes.GREEN)
+log(f"Trained model saved at {model_save_path}", Ccodes.GRAY)
 
 # Evaluate on test set
 log("Beginning evaluation...", Ccodes.GREEN)
@@ -114,6 +117,8 @@ total_samples = 0
 correct_predictions = 0
 
 for images, targets in test_loader:
+    images = [image.to(DEVICE) for image in images]
+
     with torch.no_grad():
         predictions = model(images)
 
