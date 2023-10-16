@@ -1,8 +1,10 @@
 import os
-import xml.etree.ElementTree as ET
+import xml
+
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
+
 from utils import log, Ccodes
 
 
@@ -14,7 +16,8 @@ class CustomDataset(torch.utils.data.Dataset):
         self.annotation_dir = os.path.join(root_dir, "annotations", data_split)
         self.image_files = os.listdir(self.image_dir)
         self.transform = transform
-        self.label_to_index_mapping = {
+
+        self.label_map = {
             "background": 0,
             "cube": 1,
             "cone": 2,
@@ -34,7 +37,7 @@ class CustomDataset(torch.utils.data.Dataset):
 
         # Convert the list of labels to a list of class indices
         labels = [label for bb in bounding_boxes for label in bb["labels"]]
-        label_indices = torch.tensor([self.label_to_index_mapping[label] for label in labels], dtype=torch.int64)
+        label_indices = torch.tensor([self.label_map[label] for label in labels], dtype=torch.int64)
 
         targets = {
             "boxes": target_boxes,
@@ -57,7 +60,7 @@ class CustomDataset(torch.utils.data.Dataset):
 
     def parse_xml_annotation(self, xml_file):
         log(f"Parsing {xml_file}")
-        tree = ET.parse(xml_file)
+        tree = xml.etree.ElementTree.parse(xml_file)
         root = tree.getroot()
 
         bounding_boxes = []

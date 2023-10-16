@@ -4,4 +4,5 @@ torchvision~=0.16.0
 matplotlib
 torch~=2.1.0
 torchinfo~=1.8.0
-opencv-python
+opencv-python~=4.8.1.78
+Pillow~=10.1.0

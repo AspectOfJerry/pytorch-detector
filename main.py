@@ -5,18 +5,18 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 from torchinfo import summary
-from utils import log, Ccodes
 
 from custom_dataset import CustomDataset
+from utils import log, Ccodes
 
 # Define your data directory
 DATA_DIR = "./dataset"
 OUTPUT_DIR = "./output"
 model_save_path = os.path.join(OUTPUT_DIR, "trained_model.pth")
 
-BATCH_SIZE = 4
-NUM_EPOCHS = 10
-LEARNING_RATE = 0.005
+BATCH_SIZE = 8
+NUM_EPOCHS = 16
+LEARNING_RATE = 0.001
 STEP_SIZE = 4
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -24,10 +24,11 @@ log(f"Using device: {DEVICE}", Ccodes.BLUE)
 
 # Define data transforms
 data_transform = transforms.Compose([
-    # transforms.RandomRotation(degrees=[-45, 45]),  # random rotate
-    # transforms.RandomHorizontalFlip(p=0.5),  # random flip
+    transforms.RandomRotation(degrees=[-20, 20]),
+    # transforms.RandomHorizontalFlip(p=0.5),
+    # transforms.Normalize(mean=[0, 0, 0], std=[0, 0, 0]), # need to compute mean and std
     # transforms.Resize((320, 320), antialias=True),
-    transforms.ToTensor(),  # convert to PyTorch tensor
+    transforms.ToTensor(),
 ])
 
 # Datasets
@@ -46,23 +47,40 @@ def collate_fn(batch):
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, collate_fn=collate_fn)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
-model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(
-    weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
-).to(DEVICE)
+model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(
+    weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_FPN_Weights.DEFAULT
+)
+
+for param in model.parameters():
+    param.requires_grad = False
+
+output_shape = len(train_dataset.label_map)
+
+# store the original in_features of cls_store layer
+in_features = model.roi_heads.box_predictor.cls_score.in_features
+
+# Modify cls_store and bbox_pred layers to use output_shape as the out_features parameter
+model.roi_heads.box_predictor.cls_score = torch.nn.Linear(
+    in_features=in_features, out_features=output_shape, bias=True
+)
+model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
+    in_features=in_features, out_features=output_shape * 4, bias=True
+)
+
+# Define the optimizer and learning rate scheduler
+optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=0.9)
 
 log("Model summary:", Ccodes.BLUE)
 print(summary(
     model,
     input_size=(BATCH_SIZE, 3, 3024, 3024),
     verbose=0,
-    col_names=("input_size", "output_size", "num_params", "mult_adds")
+    col_names=("input_size", "output_size", "num_params", "mult_adds"),
+    row_settings=["var_names"]
 ))
 
 log("Beginning training...", Ccodes.GREEN)
-
-# Define the optimizer and learning rate scheduler
-optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=0.1)
 
 start_time = time.time()
 
@@ -110,25 +128,7 @@ torch.save(model.state_dict(), model_save_path)
 log(f"Trained model saved at {model_save_path}", Ccodes.GRAY)
 
 # Evaluate on test set
-log("Beginning evaluation...", Ccodes.GREEN)
-model.eval()  # Set the model to evaluation mode
+# log("Beginning evaluation...", Ccodes.GREEN)
+# model.eval()  # Set the model to evaluation mode
 
-total_samples = 0
-correct_predictions = 0
-
-for images, targets in test_loader:
-    images = [image.to(DEVICE) for image in images]
-
-    with torch.no_grad():
-        predictions = model(images)
-
-    for i in range(len(targets)):
-        true_labels = targets[i]["labels"]
-        pred_labels = predictions[i]["labels"]
-        print(true_labels, pred_labels)
-        correct_predictions += torch.sum(true_labels == pred_labels).item()
-        total_samples += len(true_labels)
-
-accuracy = correct_predictions / total_samples * 100.0
-
-log(f"Test Accuracy: {accuracy:.2f}%", Ccodes.GREEN)
+input("Press any key to continue . . .")
