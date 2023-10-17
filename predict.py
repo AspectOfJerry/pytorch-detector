@@ -37,10 +37,10 @@ model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
     in_features=in_features, out_features=output_shape * 4, bias=True
 )
 
-model.load_state_dict(torch.load("output/trained_model.pth"))
+model.load_state_dict(torch.load("output/fasterrcnn_mobilenet_v3_large_fpn.pth"))
 model.eval()
 
-image = cv2.imread("dataset/images/train/bae58b57-IMG_6399.jpg")
+image = cv2.imread("dataset/images/train/e7ea9831-IMG_6411.jpg")
 
 image = image / 255.0  # Normalize the image to values between 0 and 1
 image = torch.tensor(image, dtype=torch.float32).permute(2, 0, 1).unsqueeze(0).to(DEVICE)
@@ -74,12 +74,14 @@ for box, label, score in zip(boxes, labels, scores):
 
     if score >= 0.8:
         color = color_mapping["high"]
+        cv2.rectangle(image, (x, y), (x_max, y_max), color, 3)
     elif score >= 0.5:
         color = color_mapping["medium"]
+        cv2.rectangle(image, (x, y), (x_max, y_max), color, 2)
     else:
         color = color_mapping["low"]
+        cv2.rectangle(image, (x, y), (x_max, y_max), color, 1)
 
-    cv2.rectangle(image, (x, y), (x_max, y_max), color, 2)
     cv2.putText(image, f"Label: {label_name}, Score: {score}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
 # Display the image
