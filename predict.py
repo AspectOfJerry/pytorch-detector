@@ -50,9 +50,9 @@ with torch.no_grad():
     output = model(image)
 
 # Extract bboxes, labels, and scores
-boxes = output[0]['boxes']
-labels = output[0]['labels']
-scores = output[0]['scores']
+boxes = output[0]["boxes"]
+labels = output[0]["labels"]
+scores = output[0]["scores"]
 
 # Convert image back to NumPy format
 image = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
@@ -69,7 +69,7 @@ for box, label, score in zip(boxes, labels, scores):
     x, y, x_max, y_max = int(box[0] * scale_factor), int(box[1] * scale_factor), int(box[2] * scale_factor), int(box[3] * scale_factor)
 
     label_id = int(label)
-    label_name = label_map.get(label_id, f'Label {label_id}')
+    label_name = label_map.get(label_id, f"Label {label_id}")
     score = round(score.item(), 2)
 
     if score >= 0.8:

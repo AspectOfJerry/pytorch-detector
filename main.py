@@ -1,6 +1,9 @@
 import os
 import time
 
+import onnx
+import onnx_tf
+import tf2onnx
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -12,7 +15,7 @@ from utils import log, Ccodes
 # Define your data directory
 DATA_DIR = "./dataset"
 OUTPUT_DIR = "./output"
-model_save_path = os.path.join(OUTPUT_DIR, "trained_model.pth")
+model_save_path = os.path.join(OUTPUT_DIR, "fasterrcnn_mobilenet_v3_large_fpn.pth")
 
 BATCH_SIZE = 8
 NUM_EPOCHS = 16
@@ -120,7 +123,7 @@ for epoch in range(NUM_EPOCHS):
 
 log(f"Training complete! Took {time.time() - start_time:.3f} seconds", Ccodes.GREEN)
 
-# Save model .pth
+# Save .pth model
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 
@@ -131,4 +134,26 @@ log(f"Trained model saved at {model_save_path}", Ccodes.GRAY)
 # log("Beginning evaluation...", Ccodes.GREEN)
 # model.eval()  # Set the model to evaluation mode
 
-input("Press any key to continue . . .")
+input("Press any key to continue (exporting to ONNX then to TFLite) . . .")
+print("Conversion does not work at the moment")
+exit()
+
+# Export the PyTorch model to ONNX format
+input_shape = (BATCH_SIZE, 3, 3024, 3024)
+dummy_input = torch.randn(input_shape)
+onnx_path = os.path.join(OUTPUT_DIR, "saved_model.onnx")
+torch.onnx.export(model, dummy_input, onnx_path, verbose=True, opset_version=12)
+
+# Convert ONNX model to TFLite
+onnx_model = onnx.load(onnx_path)
+
+# Specify target_opset and optimize
+tflite_model = onnx_tf.backend.prepare(onnx_model, strict=False)
+# https://github.com/onnx/onnx-tensorflow/issues/763
+# optimized_onnx_model = tflite_model.graph.as_graph_def()
+# tflite_optimized_model = tf2onnx.convert.from_graph_def(optimized_onnx_model, opset=12, output_path=None)
+
+tflite_path = os.path.join(OUTPUT_DIR, "saved_model.tflite")
+tflite_model.export_graph(tflite_path)
+# with open(tflite_path, "wb") as f:
+#     f.write(tflite_model)
