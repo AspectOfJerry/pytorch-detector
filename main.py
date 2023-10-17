@@ -1,9 +1,6 @@
 import os
 import time
 
-import onnx
-import onnx_tf
-import tf2onnx
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -27,10 +24,9 @@ log(f"Using device: {DEVICE}", Ccodes.BLUE)
 
 # Define data transforms
 data_transform = transforms.Compose([
-    transforms.RandomRotation(degrees=[-20, 20]),
+    # transforms.RandomRotation(degrees=[-20, 20]),
     # transforms.RandomHorizontalFlip(p=0.5),
     # transforms.Normalize(mean=[0, 0, 0], std=[0, 0, 0]), # need to compute mean and std
-    # transforms.Resize((320, 320), antialias=True),
     transforms.ToTensor(),
 ])
 

@@ -20,7 +20,7 @@ Install the dependencies:
 pip install -r requirements.txt
 ```
 
-If you have an NVIDIA GPU, you can install the CUDA toolkit and cuDNN to enable GPU support. If you don't have an NVIDIA GPU, the following steps.
+If you have an NVIDIA GPU, you can install the CUDA toolkit and cuDNN to enable GPU support. If you don't have an NVIDIA GPU, skip the following steps.
 
 - Download and install [CUDA 12.1 for Windows](https://developer.nvidia.com/cuda-12-1-0-download-archive)
 - Download and install [Visual Studio](https://visualstudio.microsoft.com/) with C++ build tools

@@ -24,7 +24,6 @@ class CustomDataset(torch.utils.data.Dataset):
         }
 
     def __getitem__(self, idx):
-        # Load an image
         image_file = os.path.join(self.image_dir, self.image_files[idx])
         image = Image.open(image_file).convert("RGB")
 
@@ -39,19 +38,13 @@ class CustomDataset(torch.utils.data.Dataset):
         labels = [label for bb in bounding_boxes for label in bb["labels"]]
         label_indices = torch.tensor([self.label_map[label] for label in labels], dtype=torch.int64)
 
+        if self.transform:
+            image = self.transform(image)
+
         targets = {
             "boxes": target_boxes,
             "labels": label_indices,
-            # "num_boxes": len(target_boxes)
         }
-
-        if self.transform:
-            image = self.transform(image)
-            targets = {
-                "boxes": target_boxes,
-                "labels": label_indices,
-                # "num_boxes": len(target_boxes)
-            }
 
         return image, targets
 
