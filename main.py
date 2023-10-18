@@ -12,7 +12,7 @@ from utils import log, Ccodes
 # Define your data directory
 DATA_DIR = "./dataset"
 OUTPUT_DIR = "./output"
-model_save_path = os.path.join(OUTPUT_DIR, "fasterrcnn_mobilenet_v3_large_fpn.pth")
+model_save_path = os.path.join(OUTPUT_DIR, "fasterrcnn_mobilenet_v3_large_320_fpn.pth")
 
 BATCH_SIZE = 8
 NUM_EPOCHS = 16
@@ -46,8 +46,8 @@ def collate_fn(batch):
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, collate_fn=collate_fn)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
-model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(
-    weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_FPN_Weights.DEFAULT
+model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
+    weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
 )
 
 for param in model.parameters():

@@ -16,8 +16,8 @@ label_map = {
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(
-    weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_FPN_Weights.DEFAULT
+model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
+    weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
 )
 in_features = model.roi_heads.box_predictor.cls_score.in_features
 output_shape = len(label_map)
@@ -29,11 +29,11 @@ model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
     in_features=in_features, out_features=output_shape * 4, bias=True
 )
 
-model.load_state_dict(torch.load("output/fasterrcnn_mobilenet_v3_large_fpn.pth"))
+model.load_state_dict(torch.load("output/fasterrcnn_mobilenet_v3_large_320_fpn.pth"))
 model.eval()
 
-# Access your webcam using OpenCV
-cap = cv2.VideoCapture(0)
+# change the id if needed (multiple cameras, 0 default)
+cap = cv2.VideoCapture(1)
 
 while True:
     success, frame = cap.read()
