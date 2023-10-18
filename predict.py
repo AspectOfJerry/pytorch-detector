@@ -1,3 +1,5 @@
+import time
+
 import torch
 import torchvision
 import cv2
@@ -19,6 +21,10 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
     weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
 )
+# model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(
+#     weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_FPN_Weights.DEFAULT
+# )
+
 in_features = model.roi_heads.box_predictor.cls_score.in_features
 output_shape = len(label_map)
 
@@ -30,10 +36,14 @@ model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
 )
 
 model.load_state_dict(torch.load("output/fasterrcnn_mobilenet_v3_large_320_fpn.pth"))
+# model.load_state_dict(torch.load("output/fasterrcnn_mobilenet_v3_large_fpn.pth"))
 model.eval()
 
 # change the id if needed (multiple cameras, 0 default)
-cap = cv2.VideoCapture(1)
+cap = cv2.VideoCapture(0)
+
+previousT = 0
+currentT = 0
 
 while True:
     success, frame = cap.read()
@@ -85,6 +95,12 @@ while True:
         # else:
         #     color = color_mapping["low"]
         #     cv2.rectangle(frame, (x, y), (x_max, y_max), color, 1)
+
+    currentT = time.time()
+    fps = 1 / (currentT - previousT)
+    previousT = currentT
+
+    cv2.putText(frame, str(round(fps, 4)) + " fps", (20, 40), cv2.FONT_HERSHEY_PLAIN, 1.5, (0, 255, 0), 2)
 
     cv2.imshow("Object Detection [cone, cube]", frame)
 
