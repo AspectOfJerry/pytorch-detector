@@ -14,10 +14,12 @@ DATA_DIR = "./dataset"
 OUTPUT_DIR = "./output"
 model_save_path = os.path.join(OUTPUT_DIR, "fasterrcnn_mobilenet_v3_large_320_fpn.pth")
 
-BATCH_SIZE = 8
-NUM_EPOCHS = 16
+NUM_EPOCHS = 32
+BATCH_SIZE = 16
+
 LEARNING_RATE = 0.001
-STEP_SIZE = 4
+STEP_SIZE = 8
+GAMMA = 0.85
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 log(f"Using device: {DEVICE}", Ccodes.BLUE)
@@ -68,7 +70,7 @@ model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
 
 # Define the optimizer and learning rate scheduler
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=0.9)
+lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
 
 log("Model summary:", Ccodes.BLUE)
 print(summary(
