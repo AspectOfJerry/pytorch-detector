@@ -20,7 +20,8 @@ BATCH_SIZE = 16
 LEARNING_RATE = 0.001
 STEP_SIZE = 8
 GAMMA = 0.85
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu") # CUDA is not working for some reason
+DEVICE = torch.device("cpu")
 
 log(f"Using device: {DEVICE}", Ccodes.BLUE)
 
@@ -45,8 +46,8 @@ def collate_fn(batch):
 
 
 # Data loaders
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, collate_fn=collate_fn)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, collate_fn=collate_fn)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=os.cpu_count(), collate_fn=collate_fn)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=os.cpu_count(), collate_fn=collate_fn)
 
 model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
     weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
@@ -73,13 +74,13 @@ optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
 
 log("Model summary:", Ccodes.BLUE)
-print(summary(
-    model,
-    input_size=(BATCH_SIZE, 3, 3024, 3024),
-    verbose=0,
-    col_names=("input_size", "output_size", "num_params", "mult_adds"),
-    row_settings=["var_names"]
-))
+# print(summary(
+#     model,
+#     input_size=(BATCH_SIZE, 3, 3024, 3024),
+#     verbose=0,
+#     col_names=("input_size", "output_size", "num_params", "mult_adds"),
+#     row_settings=["var_names"]
+# ))
 
 log("Beginning training...", Ccodes.GREEN)
 

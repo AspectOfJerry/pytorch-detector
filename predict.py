@@ -16,7 +16,8 @@ label_map = {
     2: "cone",
 }
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu") # CUDA is not working for some reason
+DEVICE = torch.device("cpu")
 
 model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
     weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
