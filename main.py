@@ -49,8 +49,8 @@ def collate_fn(batch):
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=os.cpu_count(), collate_fn=collate_fn)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=os.cpu_count(), collate_fn=collate_fn)
 
-model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
-    weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
+model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(
+    weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
 )
 
 for param in model.parameters():
@@ -59,29 +59,29 @@ for param in model.parameters():
 output_shape = len(train_dataset.label_map)
 
 # store the original in_features of cls_store layer
-in_features = model.roi_heads.box_predictor.cls_score.in_features
+# in_features = model.roi_heads.box_predictor.cls_score.in_features
 
 # Modify cls_store and bbox_pred layers to use output_shape as the out_features parameter
-model.roi_heads.box_predictor.cls_score = torch.nn.Linear(
-    in_features=in_features, out_features=output_shape, bias=True
-)
-model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
-    in_features=in_features, out_features=output_shape * 4, bias=True
-)
+# model.roi_heads.box_predictor.cls_score = torch.nn.Linear(
+#     in_features=in_features, out_features=output_shape, bias=True
+# )
+# model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
+#     in_features=in_features, out_features=output_shape * 4, bias=True
+# )
 
 # Define the optimizer and learning rate scheduler
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
 
 log("Model summary:", Ccodes.BLUE)
-# print(summary(
-#     model,
-#     input_size=(BATCH_SIZE, 3, 3024, 3024),
-#     verbose=0,
-#     col_names=("input_size", "output_size", "num_params", "mult_adds"),
-#     row_settings=["var_names"]
-# ))
-
+print(summary(
+    model,
+    input_size=(BATCH_SIZE, 3, 3024, 3024),
+    verbose=0,
+    col_names=("input_size", "output_size", "num_params", "mult_adds"),
+    row_settings=["var_names"]
+))
+exit()
 log("Beginning training...", Ccodes.GREEN)
 
 start_time = time.time()
@@ -136,6 +136,9 @@ log(f"Trained model saved at {model_save_path}", Ccodes.GRAY)
 input("Press any key to continue (exporting to ONNX then to TFLite) . . .")
 print("Conversion does not work at the moment")
 exit()
+
+# onnx~=1.14.1
+# tf2onnx~=1.15.1
 
 # Export the PyTorch model to ONNX format
 input_shape = (BATCH_SIZE, 3, 3024, 3024)
