@@ -7,15 +7,16 @@ import torchvision.transforms as transforms
 from torchinfo import summary
 
 from custom_dataset import CustomDataset
-from utils import log, Ccodes
+# from utils import log, Ccodes
+from cc import cc
 
 # Define your data directory
-DATA_DIR = "./dataset"
+DATA_DIR = "./dataset1"
 OUTPUT_DIR = "./output"
 model_save_path = os.path.join(OUTPUT_DIR, "fasterrcnn_mobilenet_v3_large_320_fpn.pth")
 
-NUM_EPOCHS = 32
-BATCH_SIZE = 16
+NUM_EPOCHS = 8
+BATCH_SIZE = 4
 
 LEARNING_RATE = 0.001
 STEP_SIZE = 8
@@ -23,7 +24,7 @@ GAMMA = 0.85
 # DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu") # CUDA is not working for some reason
 DEVICE = torch.device("cpu")
 
-log(f"Using device: {DEVICE}", Ccodes.BLUE)
+print(cc("BLUE", f"Using device: {DEVICE}"))
 
 # Define data transforms
 data_transform = transforms.Compose([
@@ -37,8 +38,8 @@ data_transform = transforms.Compose([
 train_dataset = CustomDataset(DATA_DIR, "train", transform=data_transform)
 test_dataset = CustomDataset(DATA_DIR, "test", transform=data_transform)
 
-log(f"Number of training images: {len(train_dataset)}", Ccodes.BLUE)
-log(f"Number of test images: {len(test_dataset)}", Ccodes.BLUE)
+print(cc("BLUE", f"Number of training images: {len(train_dataset)}"))
+print(cc("BLUE", f"Number of test images: {len(test_dataset)}"))
 
 
 def collate_fn(batch):
@@ -46,34 +47,63 @@ def collate_fn(batch):
 
 
 # Data loaders
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=os.cpu_count(), collate_fn=collate_fn)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=os.cpu_count(), collate_fn=collate_fn)
+cpu_count = 0
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=cpu_count, collate_fn=collate_fn)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=cpu_count, collate_fn=collate_fn)
 
+# Load pre-trained model
 model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(
     weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
 )
 
+"""
+# Freeze all parameters
 for param in model.parameters():
     param.requires_grad = False
 
+# Get the number of output classes
 output_shape = len(train_dataset.label_map)
+print(cc("BLUE", f"Output shape: {output_shape}"))
 
-# store the original in_features of cls_store layer
-# in_features = model.roi_heads.box_predictor.cls_score.in_features
+# Get the number of input features for the classification head
+in_features = model.head.classification_head[0].in_channels
 
-# Modify cls_store and bbox_pred layers to use output_shape as the out_features parameter
-# model.roi_heads.box_predictor.cls_score = torch.nn.Linear(
-#     in_features=in_features, out_features=output_shape, bias=True
-# )
-# model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
-#     in_features=in_features, out_features=output_shape * 4, bias=True
-# )
+# Modify the classification head to match the number of output classes
+model.head.classification_head[0] = torch.nn.Conv2d(
+    in_channels=in_features,
+    out_channels=output_shape * 4,  # 4 anchors per location
+    kernel_size=(3, 3),
+    padding=(1, 1)
+)
+
+# Get the number of input features for the regression head
+in_features = model.head.regression_head[0].in_channels
+
+# Modify the regression head to match the number of output classes
+model.head.regression_head[0] = torch.nn.Conv2d(
+    in_channels=in_features,
+    out_channels=output_shape * 4 * 4,  # 4 anchors per location, 4 coordinates per anchor
+    kernel_size=(3, 3),
+    padding=(1, 1)
+)
+
+# Unfreeze the parameters of the layers that need to be trained
+for param in model.head.classification_head[0].parameters():
+    param.requires_grad = True
+for param in model.head.regression_head[0].parameters():
+    param.requires_grad = True
+
+# Define the optimizer and learning rate scheduler
+optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE)
+lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
+
+"""
 
 # Define the optimizer and learning rate scheduler
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
 
-log("Model summary:", Ccodes.BLUE)
+print(cc("BLUE", "Model summary:"))
 print(summary(
     model,
     input_size=(BATCH_SIZE, 3, 3024, 3024),
@@ -81,8 +111,8 @@ print(summary(
     col_names=("input_size", "output_size", "num_params", "mult_adds"),
     row_settings=["var_names"]
 ))
-exit()
-log("Beginning training...", Ccodes.GREEN)
+# exit()
+print(cc("GREEN", "Beginning training..."))
 
 start_time = time.time()
 
@@ -90,7 +120,7 @@ start_time = time.time()
 for epoch in range(NUM_EPOCHS):
     model.train()
     epoch_timer = time.time()
-    log(f"Entering epoch {epoch + 1}/{NUM_EPOCHS}...", Ccodes.GREEN)
+    print(cc("GREEN", f"Beginning epoch {epoch + 1}/{NUM_EPOCHS}..."))
     for images, targets in train_loader:
         images = [image.to(DEVICE) for image in images]
 
@@ -110,27 +140,27 @@ for epoch in range(NUM_EPOCHS):
         # Update learning rate
         lr_scheduler.step()
 
-        log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}]:"
-            f"\n- Total loss: {total_loss.item()}"
-            f"\n- Learning rate: {optimizer.param_groups[0]['lr']}"
-            f"\n- Losses:\n"
-            + "\n".join([f"  - {key}: {loss}" for key, loss in loss_dict.items()])
-            + "\n",
-            Ccodes.BLUE)
+        print(cc("BLUE",
+                 f"Epoch [{epoch + 1}/{NUM_EPOCHS}]:"
+                 f"\n- Total loss: {total_loss.item()}"
+                 f"\n- Learning rate: {optimizer.param_groups[0]['lr']}"
+                 f"\n- Losses:\n"
+                 + "\n".join([f"  - {key}: {loss}" for key, loss in loss_dict.items()])
+                 + "\n"))
 
-    log(f"Epoch [{epoch + 1}/{NUM_EPOCHS}] complete! Took {time.time() - epoch_timer:.3f} seconds", Ccodes.GREEN)
+    print(cc("GREEN", f"Epoch [{epoch + 1}/{NUM_EPOCHS}] complete! Took {time.time() - epoch_timer:.3f} seconds"))
 
-log(f"Training complete! Took {time.time() - start_time:.3f} seconds", Ccodes.GREEN)
+print(cc("GREEN", f"Training complete! Took {time.time() - start_time:.3f} seconds"))
 
 # Save .pth model
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 
 torch.save(model.state_dict(), model_save_path)
-log(f"Trained model saved at {model_save_path}", Ccodes.GRAY)
+print(cc("GRAY", f"Trained model saved at {model_save_path}"))
 
 # Evaluate on test set
-# log("Beginning evaluation...", Ccodes.GREEN)
+# cc(""GREEN", "Beginning evaluation...")
 # model.eval()  # Set the model to evaluation mode
 
 input("Press any key to continue (exporting to ONNX then to TFLite) . . .")

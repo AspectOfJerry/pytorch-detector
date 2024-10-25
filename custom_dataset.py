@@ -8,19 +8,18 @@ from torch.utils.data import Dataset
 from utils import log, Ccodes
 
 
+# Modify the CustomDataset class to handle images with no annotations
 class CustomDataset(torch.utils.data.Dataset):
     def __init__(self, root_dir, data_split, transform=None):
         self.root_dir = root_dir
-        self.data_split = data_split  # "train" or "test"
+        self.data_split = data_split  # "train" and "test"
         self.image_dir = os.path.join(root_dir, "images", data_split)
         self.annotation_dir = os.path.join(root_dir, "annotations", data_split)
         self.image_files = os.listdir(self.image_dir)
         self.transform = transform
 
         self.label_map = {
-            "background": 0,
-            "cube": 1,
-            "cone": 2,
+            "0": 0
         }
 
     def __getitem__(self, idx):
