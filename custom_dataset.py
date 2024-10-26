@@ -66,7 +66,7 @@ class CustomDataset(torch.utils.data.Dataset):
             ymax = int(bbox.find("ymax").text)
             bounding_boxes.append({"labels": [label], "boxes": [xmin, ymin, xmax, ymax]})
 
-        # print(cc("GRAY", f"- Bounding boxes: {bounding_boxes}"))
+        print(cc("GRAY", f"- Bounding boxes: {bounding_boxes}"))
         if len(bounding_boxes) == 0:
             print(cc("RED", "Moving data files with no annotations, an exception will be thrown."))
             shutil.move(xml_file, f"{self.root_dir}/empty/annotations/")

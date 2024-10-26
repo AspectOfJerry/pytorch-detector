@@ -5,6 +5,7 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 from torchinfo import summary
+from torchvision.models.detection import _utils as det_utils
 from torchvision.models.detection.ssdlite import SSDLiteClassificationHead
 
 from cc import cc
@@ -58,23 +59,25 @@ test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, s
 
 # Load pre-trained model
 model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(
-    weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
+    weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT,
 )
 
-"""
-# Freeze all parameters
-for param in model.parameters():
-    param.requires_grad = False
+num_classes = 1 + 1  # include background class
 
+###
+"""
 # Get the number of output classes
 output_shape = len(train_dataset.label_map)
 print(cc("BLUE", f"Output shape: {output_shape}"))
 
 # Get the number of input features for the classification head
-in_features = model.head.classification_head[0].in_channels
+print(model.head.classification_head.get_submodule("module_list.0"))
+print(model.head.classification_head.module_list[0])
+exit()
+in_features = model.head.classification_head.get_submodule("module_list.0.0")
 
 # Modify the classification head to match the number of output classes
-model.head.classification_head[0] = torch.nn.Conv2d(
+model.head.classification_head.module_list[0][0] = torch.nn.Conv2d(
     in_channels=in_features,
     out_channels=output_shape * 4,  # 4 anchors per location
     kernel_size=(3, 3),
@@ -103,9 +106,9 @@ optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters(
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
 
 """
+###
 
-num_classes = 1 + 1  # include background class
-
+###
 """
 # num_anchors = model.head.classification_head.num_anchors
 # Get the number of anchors from the anchor generator
@@ -124,24 +127,6 @@ model.head.classification_head = SSDLiteClassificationHead(
     norm_layer=torch.nn.BatchNorm2d  # ?
 )
 """
-
-###
-
-# Get the number of anchors from the anchor generator
-num_anchors_per_location = model.anchor_generator.num_anchors_per_location()  # This should return a list or tensor
-num_anchors = list(num_anchors_per_location)  # Convert to list if needed
-
-# Access input channels as a list from the existing classification head
-in_channels = [model.head.classification_head.conv[i].in_channels for i in range(len(num_anchors))]  # Create a list of input channels
-
-# Replace the classification head with the new one
-model.head.classification_head = SSDLiteClassificationHead(
-    in_channels=in_channels,  # This is now a list
-    num_anchors=num_anchors,  # This is now a list
-    num_classes=num_classes,
-    norm_layer=torch.nn.BatchNorm2d
-)
-
 ###
 
 # Define the optimizer and learning rate scheduler
@@ -151,7 +136,7 @@ lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, g
 print(cc("BLUE", "Model summary:"))
 print(summary(
     model,
-    input_size=(BATCH_SIZE, 3, 3024, 3024),
+    input_size=(BATCH_SIZE, 3, 512, 512),
     verbose=0,
     col_names=("input_size", "output_size", "num_params", "mult_adds"),
     row_settings=["var_names"]
