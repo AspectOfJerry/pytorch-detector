@@ -1,11 +1,12 @@
 import os
+import shutil
 import xml
 
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-from utils import log, Ccodes
+from cc import cc
 
 
 # Modify the CustomDataset class to handle images with no annotations
@@ -51,7 +52,7 @@ class CustomDataset(torch.utils.data.Dataset):
         return len(self.image_files)
 
     def parse_xml_annotation(self, xml_file):
-        log(f"Parsing {xml_file}")
+        print(f"Parsing {xml_file}")
         tree = xml.etree.ElementTree.parse(xml_file)
         root = tree.getroot()
 
@@ -65,5 +66,11 @@ class CustomDataset(torch.utils.data.Dataset):
             ymax = int(bbox.find("ymax").text)
             bounding_boxes.append({"labels": [label], "boxes": [xmin, ymin, xmax, ymax]})
 
-        log(f"- Bounding boxes: {bounding_boxes}", Ccodes.GRAY)
+        # print(cc("GRAY", f"- Bounding boxes: {bounding_boxes}"))
+        if len(bounding_boxes) == 0:
+            print(cc("RED", "Moving data files with no annotations, an exception will be thrown."))
+            shutil.move(xml_file, f"{self.root_dir}/empty/annotations/")
+            shutil.move(xml_file.replace("\\annotations\\", "\\images\\").replace(".xml", ".jpeg"),
+                        f"{self.root_dir}/empty/images/")
+            return
         return bounding_boxes

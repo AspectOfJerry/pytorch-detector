@@ -5,10 +5,10 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 from torchinfo import summary
+from torchvision.models.detection.ssdlite import SSDLiteClassificationHead
 
-from custom_dataset import CustomDataset
-# from utils import log, Ccodes
 from cc import cc
+from custom_dataset import CustomDataset
 
 # Define your data directory
 DATA_DIR = "./dataset1"
@@ -16,13 +16,18 @@ OUTPUT_DIR = "./output"
 model_save_path = os.path.join(OUTPUT_DIR, "fasterrcnn_mobilenet_v3_large_320_fpn.pth")
 
 NUM_EPOCHS = 8
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 
-LEARNING_RATE = 0.001
-STEP_SIZE = 8
-GAMMA = 0.85
-# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu") # CUDA is not working for some reason
-DEVICE = torch.device("cpu")
+LEARNING_RATE = 0.002  # usually between 0.0001 and 0.01 ?
+STEP_SIZE = 3  # usually 20-30% of the total number of epochs
+GAMMA = 0.85  # usually between 0.1 and 0.5 ?
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # CUDA is not working for some reason
+# DEVICE = torch.device("cpu")
+
+prev_lr = 0
+next_lr = 0
+prev_loss = 0
+next_loss = 0
 
 print(cc("BLUE", f"Using device: {DEVICE}"))
 
@@ -99,6 +104,46 @@ lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, g
 
 """
 
+num_classes = 1 + 1  # include background class
+
+"""
+# num_anchors = model.head.classification_head.num_anchors
+# Get the number of anchors from the anchor generator
+num_anchors_per_location = model.anchor_generator.num_anchors_per_location()
+# Prepare num_anchors as a list where each element corresponds to a feature map location
+num_anchors = [num_anchors_per_location[i] * 4 for i in range(len(num_anchors_per_location))]  # 4 for (x, y, w, h)
+
+# Access input channels from the existing classification head
+in_channels = model.head.classification_head.module_list[0][1].out_channels  # Output of the last Conv2d layer
+
+
+model.head.classification_head = SSDLiteClassificationHead(
+    in_channels=in_channels,
+    num_anchors=num_anchors,
+    num_classes=num_classes,
+    norm_layer=torch.nn.BatchNorm2d  # ?
+)
+"""
+
+###
+
+# Get the number of anchors from the anchor generator
+num_anchors_per_location = model.anchor_generator.num_anchors_per_location()  # This should return a list or tensor
+num_anchors = list(num_anchors_per_location)  # Convert to list if needed
+
+# Access input channels as a list from the existing classification head
+in_channels = [model.head.classification_head.conv[i].in_channels for i in range(len(num_anchors))]  # Create a list of input channels
+
+# Replace the classification head with the new one
+model.head.classification_head = SSDLiteClassificationHead(
+    in_channels=in_channels,  # This is now a list
+    num_anchors=num_anchors,  # This is now a list
+    num_classes=num_classes,
+    norm_layer=torch.nn.BatchNorm2d
+)
+
+###
+
 # Define the optimizer and learning rate scheduler
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
@@ -124,18 +169,19 @@ for epoch in range(NUM_EPOCHS):
     for images, targets in train_loader:
         images = [image.to(DEVICE) for image in images]
 
-        targets_tensor = []
+        y_true = []
         for i in range(len(images)):
             d = {"boxes": targets[i]["boxes"], "labels": targets[i]["labels"]}
-            targets_tensor.append(d)
+            y_true.append(d)
 
-        loss_dict = model(images, targets_tensor)
+        losses = model(images, y_true)
+        print(losses)
 
-        total_loss = sum(loss for loss in loss_dict.values())
+        total_loss = sum(loss for loss in losses.values())
 
-        optimizer.zero_grad()
-        total_loss.backward()
-        optimizer.step()
+        optimizer.zero_grad()  # Clear previous gradients
+        total_loss.backward()  # Compute gradients
+        optimizer.step()  # Update model parameters
 
         # Update learning rate
         lr_scheduler.step()
@@ -145,8 +191,20 @@ for epoch in range(NUM_EPOCHS):
                  f"\n- Total loss: {total_loss.item()}"
                  f"\n- Learning rate: {optimizer.param_groups[0]['lr']}"
                  f"\n- Losses:\n"
-                 + "\n".join([f"  - {key}: {loss}" for key, loss in loss_dict.items()])
+                 + "\n".join([f"  - {key}: {loss}" for key, loss in losses.items()])
                  + "\n"))
+
+        # Loss difference
+        next_loss = total_loss.item()
+        delta_loss = prev_loss - next_loss
+        print(cc("CYAN", f"Training loss delta: {delta_loss}"))
+        prev_loss = next_loss
+
+        # Learning rate difference
+        next_lr = optimizer.param_groups[0]['lr']
+        delta_lr = prev_lr - next_lr
+        print(cc("CYAN", f"Learning rate delta: {delta_lr}"))
+        prev_lr = next_lr
 
     print(cc("GREEN", f"Epoch [{epoch + 1}/{NUM_EPOCHS}] complete! Took {time.time() - epoch_timer:.3f} seconds"))
 
