@@ -5,8 +5,6 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 from torchinfo import summary
-from torchvision.models.detection import _utils as det_utils
-from torchvision.models.detection.ssdlite import SSDLiteClassificationHead
 
 from cc import cc
 from custom_dataset import CustomDataset
@@ -14,14 +12,15 @@ from custom_dataset import CustomDataset
 # Define your data directory
 DATA_DIR = "./dataset1"
 OUTPUT_DIR = "./output"
-model_save_path = os.path.join(OUTPUT_DIR, "fasterrcnn_mobilenet_v3_large_320_fpn.pth")
+model_save_path = os.path.join(OUTPUT_DIR, "inference_graph.pth")
+# model_save_path = os.path.join(OUTPUT_DIR, "fasterrcnn_mobilenet_v3_large_fpn.pth")
 
-NUM_EPOCHS = 8
+NUM_EPOCHS = 12
 BATCH_SIZE = 8
 
 LEARNING_RATE = 0.002  # usually between 0.0001 and 0.01 ?
-STEP_SIZE = 3  # usually 20-30% of the total number of epochs
-GAMMA = 0.85  # usually between 0.1 and 0.5 ?
+STEP_SIZE = 4  # usually 20-30% of the total number of epochs
+GAMMA = 0.5  # usually between 0.1 and 0.5 ?
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # CUDA is not working for some reason
 # DEVICE = torch.device("cpu")
 
@@ -57,77 +56,25 @@ cpu_count = 0
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=cpu_count, collate_fn=collate_fn)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=cpu_count, collate_fn=collate_fn)
 
-# Load pre-trained model
-model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(
-    weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT,
+model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
+    weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
 )
 
-num_classes = 1 + 1  # include background class
+# for param in model.parameters():
+#     param.requires_grad = False
 
-###
-"""
-# Get the number of output classes
 output_shape = len(train_dataset.label_map)
-print(cc("BLUE", f"Output shape: {output_shape}"))
 
-# Get the number of input features for the classification head
-print(model.head.classification_head.get_submodule("module_list.0"))
-print(model.head.classification_head.module_list[0])
-exit()
-in_features = model.head.classification_head.get_submodule("module_list.0.0")
+# store the original in_features of cls_store layer
+in_features = model.roi_heads.box_predictor.cls_score.in_features
 
-# Modify the classification head to match the number of output classes
-model.head.classification_head.module_list[0][0] = torch.nn.Conv2d(
-    in_channels=in_features,
-    out_channels=output_shape * 4,  # 4 anchors per location
-    kernel_size=(3, 3),
-    padding=(1, 1)
+# Modify cls_store and bbox_pred layers to use output_shape as the out_features parameter
+model.roi_heads.box_predictor.cls_score = torch.nn.Linear(
+    in_features=in_features, out_features=output_shape, bias=True
 )
-
-# Get the number of input features for the regression head
-in_features = model.head.regression_head[0].in_channels
-
-# Modify the regression head to match the number of output classes
-model.head.regression_head[0] = torch.nn.Conv2d(
-    in_channels=in_features,
-    out_channels=output_shape * 4 * 4,  # 4 anchors per location, 4 coordinates per anchor
-    kernel_size=(3, 3),
-    padding=(1, 1)
+model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
+    in_features=in_features, out_features=output_shape * 4, bias=True
 )
-
-# Unfreeze the parameters of the layers that need to be trained
-for param in model.head.classification_head[0].parameters():
-    param.requires_grad = True
-for param in model.head.regression_head[0].parameters():
-    param.requires_grad = True
-
-# Define the optimizer and learning rate scheduler
-optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE)
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
-
-"""
-###
-
-###
-"""
-# num_anchors = model.head.classification_head.num_anchors
-# Get the number of anchors from the anchor generator
-num_anchors_per_location = model.anchor_generator.num_anchors_per_location()
-# Prepare num_anchors as a list where each element corresponds to a feature map location
-num_anchors = [num_anchors_per_location[i] * 4 for i in range(len(num_anchors_per_location))]  # 4 for (x, y, w, h)
-
-# Access input channels from the existing classification head
-in_channels = model.head.classification_head.module_list[0][1].out_channels  # Output of the last Conv2d layer
-
-
-model.head.classification_head = SSDLiteClassificationHead(
-    in_channels=in_channels,
-    num_anchors=num_anchors,
-    num_classes=num_classes,
-    norm_layer=torch.nn.BatchNorm2d  # ?
-)
-"""
-###
 
 # Define the optimizer and learning rate scheduler
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
