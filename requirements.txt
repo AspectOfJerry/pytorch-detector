@@ -1,5 +1,5 @@
-torchvision~=0.16.0
-torch~=2.1.0
+torch~=2.5.1+cu124
+torchvision~=0.20.1+cu124
 torchinfo~=1.8.0
-opencv-python~=4.8.1.78
-Pillow~=10.1.0
+opencv-python~=4.10.0.84
+pillow~=10.2.0

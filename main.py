@@ -5,32 +5,37 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 from torchinfo import summary
-from torchvision.models.detection import _utils as det_utils
-from torchvision.models.detection.ssdlite import SSDLiteClassificationHead
+from torchvision.ops import box_iou
 
 from cc import cc
 from custom_dataset import CustomDataset
 
 # Define your data directory
-DATA_DIR = "./dataset1"
+DATA_DIR = "./dataset"
 OUTPUT_DIR = "./output"
-model_save_path = os.path.join(OUTPUT_DIR, "fasterrcnn_mobilenet_v3_large_320_fpn.pth")
+model_save_path = os.path.join(OUTPUT_DIR, "inference_graph.pth")
+# model_save_path = os.path.join(OUTPUT_DIR, "fasterrcnn_mobilenet_v3_large_fpn.pth")
 
-NUM_EPOCHS = 8
-BATCH_SIZE = 8
+NUM_EPOCHS = 20
+BATCH_SIZE = 16
 
-LEARNING_RATE = 0.002  # usually between 0.0001 and 0.01 ?
-STEP_SIZE = 3  # usually 20-30% of the total number of epochs
-GAMMA = 0.85  # usually between 0.1 and 0.5 ?
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # CUDA is not working for some reason
-# DEVICE = torch.device("cpu")
+LEARNING_RATE = 0.001  # usually between 0.0001 and 0.01 ?
+STEP_SIZE = 4  # usually 20-30% of the total number of epochs
+GAMMA = 0.5  # usually between 0.1 and 0.5 ?
+
+CUDA_AVAIL = torch.cuda.is_available()
+# CUDA_AVAIL = False  # Force CPU for testing
+DEVICE = torch.device("cuda" if CUDA_AVAIL else "cpu")
+print(cc("BLUE", f"Using device: {DEVICE}"))
+print(cc("CYAN", f"CUDA available: {CUDA_AVAIL}"))
+if CUDA_AVAIL:
+    print(cc("CYAN", f"Number of GPUs: {torch.cuda.device_count()}"))
+    print(cc("CYAN", f"GPU: {torch.cuda.get_device_name(0)}"))
 
 prev_lr = 0
 next_lr = 0
 prev_loss = 0
 next_loss = 0
-
-print(cc("BLUE", f"Using device: {DEVICE}"))
 
 # Define data transforms
 data_transform = transforms.Compose([
@@ -41,8 +46,8 @@ data_transform = transforms.Compose([
 ])
 
 # Datasets
-train_dataset = CustomDataset(DATA_DIR, "train", transform=data_transform)
-test_dataset = CustomDataset(DATA_DIR, "test", transform=data_transform)
+train_dataset = CustomDataset(DATA_DIR, "train", transform=data_transform, device=DEVICE)
+test_dataset = CustomDataset(DATA_DIR, "test", transform=data_transform, device=DEVICE)
 
 print(cc("BLUE", f"Number of training images: {len(train_dataset)}"))
 print(cc("BLUE", f"Number of test images: {len(test_dataset)}"))
@@ -57,79 +62,28 @@ cpu_count = 0
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=cpu_count, collate_fn=collate_fn)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=cpu_count, collate_fn=collate_fn)
 
-# Load pre-trained model
-model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(
-    weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT,
+model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
+    weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
+)
+model.to(DEVICE)
+
+# for param in model.parameters():
+#     param.requires_grad = False
+
+output_shape = len(train_dataset.label_map) + 1  # add 1 for the background class
+
+# store the original in_features of cls_store layer
+in_features = model.roi_heads.box_predictor.cls_score.in_features
+
+# Modify cls_store and bbox_pred layers to use output_shape as the out_features parameter
+model.roi_heads.box_predictor.cls_score = torch.nn.Linear(
+    in_features=in_features, out_features=output_shape, bias=True
+)
+model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
+    in_features=in_features, out_features=output_shape * 4, bias=True
 )
 
-num_classes = 1 + 1  # include background class
-
-###
-"""
-# Get the number of output classes
-output_shape = len(train_dataset.label_map)
-print(cc("BLUE", f"Output shape: {output_shape}"))
-
-# Get the number of input features for the classification head
-print(model.head.classification_head.get_submodule("module_list.0"))
-print(model.head.classification_head.module_list[0])
-exit()
-in_features = model.head.classification_head.get_submodule("module_list.0.0")
-
-# Modify the classification head to match the number of output classes
-model.head.classification_head.module_list[0][0] = torch.nn.Conv2d(
-    in_channels=in_features,
-    out_channels=output_shape * 4,  # 4 anchors per location
-    kernel_size=(3, 3),
-    padding=(1, 1)
-)
-
-# Get the number of input features for the regression head
-in_features = model.head.regression_head[0].in_channels
-
-# Modify the regression head to match the number of output classes
-model.head.regression_head[0] = torch.nn.Conv2d(
-    in_channels=in_features,
-    out_channels=output_shape * 4 * 4,  # 4 anchors per location, 4 coordinates per anchor
-    kernel_size=(3, 3),
-    padding=(1, 1)
-)
-
-# Unfreeze the parameters of the layers that need to be trained
-for param in model.head.classification_head[0].parameters():
-    param.requires_grad = True
-for param in model.head.regression_head[0].parameters():
-    param.requires_grad = True
-
-# Define the optimizer and learning rate scheduler
-optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE)
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
-
-"""
-###
-
-###
-"""
-# num_anchors = model.head.classification_head.num_anchors
-# Get the number of anchors from the anchor generator
-num_anchors_per_location = model.anchor_generator.num_anchors_per_location()
-# Prepare num_anchors as a list where each element corresponds to a feature map location
-num_anchors = [num_anchors_per_location[i] * 4 for i in range(len(num_anchors_per_location))]  # 4 for (x, y, w, h)
-
-# Access input channels from the existing classification head
-in_channels = model.head.classification_head.module_list[0][1].out_channels  # Output of the last Conv2d layer
-
-
-model.head.classification_head = SSDLiteClassificationHead(
-    in_channels=in_channels,
-    num_anchors=num_anchors,
-    num_classes=num_classes,
-    norm_layer=torch.nn.BatchNorm2d  # ?
-)
-"""
-###
-
-# Define the optimizer and learning rate scheduler
+# Create the optimizer and learning rate scheduler
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
 
@@ -141,7 +95,7 @@ print(summary(
     col_names=("input_size", "output_size", "num_params", "mult_adds"),
     row_settings=["var_names"]
 ))
-# exit()
+print(cc("GREEN", f"Model training mode: {model.training}"))
 print(cc("GREEN", "Beginning training..."))
 
 start_time = time.time()
@@ -152,15 +106,15 @@ for epoch in range(NUM_EPOCHS):
     epoch_timer = time.time()
     print(cc("GREEN", f"Beginning epoch {epoch + 1}/{NUM_EPOCHS}..."))
     for images, targets in train_loader:
-        images = [image.to(DEVICE) for image in images]
+        images = [image.to(DEVICE) for image in images]  # Move images to the correct device
+        targets = [{k: v.to(DEVICE) for k, v in t.items()} for t in targets]  # Move targets to the correct device
 
         y_true = []
         for i in range(len(images)):
-            d = {"boxes": targets[i]["boxes"], "labels": targets[i]["labels"]}
+            d = {"boxes": targets[i]["boxes"].to(DEVICE), "labels": targets[i]["labels"].to(DEVICE)}
             y_true.append(d)
 
         losses = model(images, y_true)
-        print(losses)
 
         total_loss = sum(loss for loss in losses.values())
 
@@ -169,7 +123,7 @@ for epoch in range(NUM_EPOCHS):
         optimizer.step()  # Update model parameters
 
         # Update learning rate
-        lr_scheduler.step()
+        # lr_scheduler.step()
 
         print(cc("BLUE",
                  f"Epoch [{epoch + 1}/{NUM_EPOCHS}]:"
@@ -179,19 +133,22 @@ for epoch in range(NUM_EPOCHS):
                  + "\n".join([f"  - {key}: {loss}" for key, loss in losses.items()])
                  + "\n"))
 
-        # Loss difference
+        # Training loss difference
         next_loss = total_loss.item()
         delta_loss = prev_loss - next_loss
         print(cc("CYAN", f"Training loss delta: {delta_loss}"))
         prev_loss = next_loss
 
         # Learning rate difference
-        next_lr = optimizer.param_groups[0]['lr']
+        next_lr = optimizer.param_groups[0]["lr"]
         delta_lr = prev_lr - next_lr
         print(cc("CYAN", f"Learning rate delta: {delta_lr}"))
         prev_lr = next_lr
 
     print(cc("GREEN", f"Epoch [{epoch + 1}/{NUM_EPOCHS}] complete! Took {time.time() - epoch_timer:.3f} seconds"))
+
+    # Step the scheduler after each epoch
+    lr_scheduler.step()
 
 print(cc("GREEN", f"Training complete! Took {time.time() - start_time:.3f} seconds"))
 
@@ -202,12 +159,55 @@ if not os.path.exists(OUTPUT_DIR):
 torch.save(model.state_dict(), model_save_path)
 print(cc("GRAY", f"Trained model saved at {model_save_path}"))
 
-# Evaluate on test set
-# cc(""GREEN", "Beginning evaluation...")
-# model.eval()  # Set the model to evaluation mode
+input("Press any key to proceed to evaluation . . .")
+
+# Run evaluation on the test dataset
+print(cc("GREEN", "Beginning evaluation..."))
+
+model.eval()
+total_iou = 0.0
+total_images = 0
+
+with torch.no_grad():
+    for images, targets in test_loader:
+        images = [image.to(DEVICE) for image in images]  # Move images to the correct device
+        targets = [{k: v.to(DEVICE) for k, v in t.items()} for t in targets]  # Move targets to the correct device
+        outputs = model(images)  # Get model predictions
+
+        for i, output in enumerate(outputs):
+            # Ground-truth boxes and labels
+            gt_boxes = targets[i]["boxes"].to(DEVICE)
+            gt_labels = targets[i]["labels"].to(DEVICE)
+
+            # Predicted boxes and labels
+            pred_boxes = output["boxes"]
+            pred_labels = output["labels"]
+
+            if len(pred_boxes) > 0 and len(gt_boxes) > 0:
+                # Calculate IoU between each predicted and ground-truth box
+                ious = box_iou(pred_boxes, gt_boxes)
+                max_iou_per_pred = ious.max(dim=1)[0]  # Take the max IoU for each predicted box
+
+                # Average IoU for the batch
+                avg_iou = max_iou_per_pred.mean().item()
+                total_iou += avg_iou
+                total_images += 1
+
+                # Print some details
+                print(f"Image {i + 1}: Avg IoU = {avg_iou:.4f}")
+            else:
+                print(f"Image {i + 1}: No detections or ground-truth boxes to compare.")
+
+# Calculate and print the overall IoU
+if total_images > 0:
+    mean_iou = total_iou / total_images
+    print(f"\nMean IoU over the test set: {mean_iou:.4f}")
+else:
+    print("No valid predictions to calculate IoU.")
 
 input("Press any key to continue (exporting to ONNX then to TFLite) . . .")
 print("Conversion does not work at the moment")
+
 exit()
 
 # onnx~=1.14.1

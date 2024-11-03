@@ -3,6 +3,9 @@ import time
 import torch
 import torchvision
 import cv2
+from torchinfo import summary
+
+from cc import cc
 
 color_mapping = {
     "high": (0, 255, 0),  # Green
@@ -11,32 +14,101 @@ color_mapping = {
 }
 
 label_map = {
-    0: "note"
+    1: "note"
 }
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # CUDA is not working for some reason
-# DEVICE = torch.device("cpu")
+CUDA_AVAIL = torch.cuda.is_available()
+# CUDA_AVAIL = False  # Force CPU for testing
+DEVICE = torch.device("cuda" if CUDA_AVAIL else "cpu")  # CUDA is not working for some reason
+print(cc("BLUE", f"Using device: {DEVICE}"))
+print(cc("CYAN", f"CUDA available: {CUDA_AVAIL}"))
+if CUDA_AVAIL:
+    print(cc("CYAN", f"Number of GPUs: {torch.cuda.device_count()}"))
+    print(cc("CYAN", f"GPU: {torch.cuda.get_device_name(0)}"))
 
-model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(
-    weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT,
+model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
+    weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
 )
-# model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(
-#     weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_FPN_Weights.DEFAULT
-# )
 
-# in_features = model.roi_heads.box_predictor.cls_score.in_features
-# output_shape = len(label_map)
-#
-# model.roi_heads.box_predictor.cls_score = torch.nn.Linear(
-#     in_features=in_features, out_features=output_shape, bias=True
-# )
-# model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
-#     in_features=in_features, out_features=output_shape * 4, bias=True
-# )
+output_shape = len(label_map) + 1  # add 1 for the background class
 
-model.load_state_dict(torch.load("output/fasterrcnn_mobilenet_v3_large_320_fpn.pth"))
-# model.load_state_dict(torch.load("output/fasterrcnn_mobilenet_v3_large_fpn.pth"))
+# store the original in_features of cls_store layer
+in_features = model.roi_heads.box_predictor.cls_score.in_features
+
+# Modify cls_store and bbox_pred layers to use output_shape as the out_features parameter
+model.roi_heads.box_predictor.cls_score = torch.nn.Linear(
+    in_features=in_features, out_features=output_shape, bias=True
+)
+model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
+    in_features=in_features, out_features=output_shape * 4, bias=True
+)
+
+model.load_state_dict(torch.load("output/inference_graph.pth"))
 model.eval()
+
+print(cc("BLUE", "Model summary:"))
+print(summary(
+    model,
+    input_size=(1, 3, 512, 512),
+    verbose=0,
+    col_names=("input_size", "output_size", "num_params", "mult_adds"),
+    row_settings=["var_names"]
+))
+
+# Read and preprocess the image
+image = cv2.imread("dataset/images/test/000000000164.jpeg")
+# image = cv2.resize(image, (512, 512))  # Resize to match the input size
+image = image / 255.0  # Normalize the image to values between 0 and 1
+image = torch.tensor(image, dtype=torch.float32).permute(2, 0, 1).unsqueeze(0).to(DEVICE)
+
+# Inference
+with torch.no_grad():
+    output = model(image)
+
+# Extract bboxes, labels, and scores
+boxes = output[0]["boxes"]
+labels = output[0]["labels"]
+scores = output[0]["scores"]
+
+# Convert image back to NumPy format
+image = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
+scale_factor = 512 / max(image.shape[0], image.shape[1])
+
+# Draw the bboxes
+for box, label, score in zip(boxes, labels, scores):
+    box = box.int()
+
+    # Scale the bounding box coordinates because the image was resized
+    x, y, x_max, y_max = int(box[0] * scale_factor), int(box[1] * scale_factor), int(box[2] * scale_factor), int(box[3] * scale_factor)
+    label_id = int(label)
+    label_name = label_map.get(label_id, f"Label {label_id}")
+    score = round(score.item(), 2)
+
+    if score >= 0.8:
+        color = color_mapping["high"]
+        print(cc("GREEN", f"Label: {label_name}, Score: {score}"))
+    elif score >= 0.5:
+        color = color_mapping["medium"]
+        print(cc("YELLOW", f"Label: {label_name}, Score: {score}"))
+    elif score >= 0.3:
+        color = color_mapping["low"]
+        print(cc("RED", f"Label: {label_name}, Score: {score}"))
+    else:
+        continue
+
+    cv2.rectangle(image, (x, y), (x_max, y_max), color, 2)
+    cv2.putText(image, f"Label: {label_name}, Score: {score}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+# Display the image
+cv2.imshow("Image with Predictions", image)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
+
+"""
+VIDEO INFERENCE UNFINISHED
+"""
+
+exit()
 
 # change the id if needed (multiple cameras, 0 default)
 cap = cv2.VideoCapture(0)
@@ -68,6 +140,8 @@ while True:
     boxes = output[0]["boxes"]
     labels = output[0]["labels"]
     scores = output[0]["scores"]
+
+    print(scores)
 
     for box, label, score in zip(boxes, labels, scores):
         box = box.int()
