@@ -19,7 +19,8 @@ class CustomDataset(torch.utils.data.Dataset):
         self.device = device
 
         self.label_map = {
-            "note": 1
+            # Label indices start from 1, 0 is reserved for the background class
+            "0": 1  # "0" is the name of the class in the annotation file for notes
         }
 
     def __getitem__(self, idx):
@@ -63,8 +64,8 @@ class CustomDataset(torch.utils.data.Dataset):
             ymin = int(bbox.find("ymin").text)
             xmax = int(bbox.find("xmax").text)
             ymax = int(bbox.find("ymax").text)
-            # bounding_boxes.append({"labels": [label], "boxes": [xmin, ymin, xmax, ymax]})
-            bounding_boxes.append({"labels": ["note"], "boxes": [xmin, ymin, xmax, ymax]})
+            bounding_boxes.append({"labels": [label], "boxes": [xmin, ymin, xmax, ymax]})
+            # bounding_boxes.append({"labels": ["note"], "boxes": [xmin, ymin, xmax, ymax]})
 
         # print(cc("GRAY", f"- Bounding boxes: {bounding_boxes}"))
 

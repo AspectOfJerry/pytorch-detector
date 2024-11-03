@@ -30,6 +30,7 @@ model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
     weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
 )
 model.train()
+
 print(cc("GRAY", "Model summary:"))
 print(cc("GRAY", str(summary(
     model,
@@ -51,8 +52,8 @@ print("-------------------------")
 print(cc("YELLOW", "Configuring devices..."))
 CUDA_AVAIL = torch.cuda.is_available()
 # CUDA_AVAIL = False  # Force CPU for testing
+
 DEVICE = torch.device("cuda" if CUDA_AVAIL else "cpu")
-model.to(DEVICE)
 print(cc("BLUE", f"Using device: {DEVICE}"))
 print(cc("BLUE", f"CUDA available: {CUDA_AVAIL}"))
 if CUDA_AVAIL:
@@ -68,14 +69,17 @@ next_loss = 0
 
 # Datasets
 print(cc("YELLOW", "Creating datasets..."))
-data_transform = transforms.Compose([
+data_transform_train = transforms.Compose([
     # transforms.RandomRotation(degrees=[-20, 20]),
     # transforms.RandomHorizontalFlip(p=0.5),
     # transforms.Normalize(mean=[0, 0, 0], std=[0, 0, 0]), # need to compute mean and std
-    transforms.ToTensor(),
+    transforms.ToTensor()
 ])
-train_dataset = CustomDataset(DATA_DIR, "train", transform=data_transform, device=DEVICE)
-test_dataset = CustomDataset(DATA_DIR, "test", device=DEVICE)
+data_transform_test = transforms.Compose([
+    transforms.ToTensor()
+])
+train_dataset = CustomDataset(DATA_DIR, "train", transform=data_transform_train, device=DEVICE)
+test_dataset = CustomDataset(DATA_DIR, "test", transform=data_transform_test, device=DEVICE)
 
 print(cc("CYAN", f"Training dataset: {len(train_dataset)} images"))
 print(cc("CYAN", f"Batches per epoch: {math.ceil(len(train_dataset) / BATCH_SIZE)}"))
@@ -111,9 +115,9 @@ model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
 # Create the optimizer and learning rate scheduler
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
+model.to(DEVICE)  # Leave this last to ensure all model parameters are on the correct device
 
 input(cc("GREEN", "Ready to begin training with the current configuration. Press any key to continue . . ."))
-print("\n")
 
 start_time = time.time()
 

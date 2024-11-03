@@ -12,28 +12,47 @@ color_mapping = {
 }
 
 label_map = {
+    # Label indices start from 1, 0 is reserved for the background class
     1: "note"
 }
 
-CUDA_AVAIL = torch.cuda.is_available()
-# CUDA_AVAIL = False  # Force CPU for testing
-DEVICE = torch.device("cuda" if CUDA_AVAIL else "cpu")
-print(cc("BLUE", f"Using device: {DEVICE}"))
-print(cc("CYAN", f"CUDA available: {CUDA_AVAIL}"))
-if CUDA_AVAIL:
-    print(cc("CYAN", f"Number of GPUs: {torch.cuda.device_count()}"))
-    print(cc("CYAN", f"GPU: {torch.cuda.get_device_name(0)}"))
-
+# Creating the model
+print(cc("YELLOW", "Creating model..."))
 model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
     weights=torchvision.models.detection.FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
 )
+model.eval()
 
+print(cc("GRAY", "Model summary:"))
+print(cc("GRAY", str(summary(
+    model,
+    input_size=(1, 3, 512, 512),
+    verbose=0,
+    col_names=("input_size", "output_size", "num_params", "mult_adds"),
+    row_settings=["var_names"]
+))))
+
+# Device configuration
+print(cc("YELLOW", "Configuring devices..."))
+CUDA_AVAIL = torch.cuda.is_available()
+# CUDA_AVAIL = False  # Force CPU for testing
+
+DEVICE = torch.device("cuda" if CUDA_AVAIL else "cpu")
+print(cc("BLUE", f"Using device: {DEVICE}"))
+print(cc("BLUE", f"CUDA available: {CUDA_AVAIL}"))
+if CUDA_AVAIL:
+    print(cc("BLUE", f"Number of GPUs: {torch.cuda.device_count()}"))
+    print(cc("BLUE", f"GPU: {torch.cuda.get_device_name(0)}"))
+print("-------------------------")
+
+# Model modifications
+print(cc("YELLOW", "Preparing model..."))
 output_shape = len(label_map) + 1  # add 1 for the background class
 
 # store the original in_features of cls_store layer
 in_features = model.roi_heads.box_predictor.cls_score.in_features
 
-# Modify cls_store and bbox_pred layers to use output_shape as the out_features parameter
+# modify cls_store and bbox_pred layers to use output_shape as the out_features parameter
 model.roi_heads.box_predictor.cls_score = torch.nn.Linear(
     in_features=in_features, out_features=output_shape, bias=True
 )
@@ -42,16 +61,9 @@ model.roi_heads.box_predictor.bbox_pred = torch.nn.Linear(
 )
 
 model.load_state_dict(torch.load("output/inference_graph.pth"))
+# model.load_state_dict(torch.load("output/inference_graph-1.pth"))
+model.to(DEVICE)
 model.eval()
-
-print(cc("BLUE", "Model summary:"))
-print(summary(
-    model,
-    input_size=(1, 3, 512, 512),
-    verbose=0,
-    col_names=("input_size", "output_size", "num_params", "mult_adds"),
-    row_settings=["var_names"]
-))
 
 # Read and preprocess the image
 image = cv2.imread("dataset/images/test/000000000164.jpeg")
@@ -72,6 +84,9 @@ scores = output[0]["scores"]
 image = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
 scale_factor = 512 / max(image.shape[0], image.shape[1])
 
+MIN_CONF = 0.3
+print(cc("CYAN", f"Predictions above {MIN_CONF} confidence score:"))
+
 # Draw the bboxes
 for box, label, score in zip(boxes, labels, scores):
     box = box.int()
@@ -88,7 +103,7 @@ for box, label, score in zip(boxes, labels, scores):
     elif score >= 0.5:
         color = color_mapping["medium"]
         print(cc("YELLOW", f"Label: {label_name}, Score: {score}"))
-    elif score >= 0.3:
+    elif score >= MIN_CONF:
         color = color_mapping["low"]
         print(cc("RED", f"Label: {label_name}, Score: {score}"))
     else:
@@ -120,7 +135,7 @@ while True:
     if not success:
         break
 
-    model_frame = frame.copy()
+    # model_frame = frame.copy()
 
     # Resize image to fit within the display window
     scaleFactorX = 640 / frame.shape[1]
