@@ -9,18 +9,18 @@ from torch.utils.data import Dataset
 from cc import cc
 
 
-# Modify the CustomDataset class to handle images with no annotations
 class CustomDataset(torch.utils.data.Dataset):
-    def __init__(self, root_dir, data_split, transform=None):
+    def __init__(self, root_dir, data_split, transform=None, device="cpu"):
         self.root_dir = root_dir
         self.data_split = data_split  # "train" and "test"
         self.image_dir = os.path.join(root_dir, "images", data_split)
         self.annotation_dir = os.path.join(root_dir, "annotations", data_split)
         self.image_files = os.listdir(self.image_dir)
         self.transform = transform
+        self.device = device
 
         self.label_map = {
-            "0": 0
+            "note": 1
         }
 
     def __getitem__(self, idx):
@@ -32,11 +32,11 @@ class CustomDataset(torch.utils.data.Dataset):
         bounding_boxes = self.parse_xml_annotation(xml_file)
 
         # Create a list of bounding boxes
-        target_boxes = torch.tensor([bb["boxes"] for bb in bounding_boxes], dtype=torch.float32)
+        target_boxes = torch.tensor([bb["boxes"] for bb in bounding_boxes], dtype=torch.float32).to(self.device)
 
         # Convert the list of labels to a list of class indices
         labels = [label for bb in bounding_boxes for label in bb["labels"]]
-        label_indices = torch.tensor([self.label_map[label] for label in labels], dtype=torch.int64)
+        label_indices = torch.tensor([self.label_map[label] for label in labels], dtype=torch.int64).to(self.device)
 
         if self.transform:
             image = self.transform(image)
@@ -64,13 +64,13 @@ class CustomDataset(torch.utils.data.Dataset):
             ymin = int(bbox.find("ymin").text)
             xmax = int(bbox.find("xmax").text)
             ymax = int(bbox.find("ymax").text)
-            bounding_boxes.append({"labels": [label], "boxes": [xmin, ymin, xmax, ymax]})
+            # bounding_boxes.append({"labels": [label], "boxes": [xmin, ymin, xmax, ymax]})
+            bounding_boxes.append({"labels": ["note"], "boxes": [xmin, ymin, xmax, ymax]})
 
         print(cc("GRAY", f"- Bounding boxes: {bounding_boxes}"))
         if len(bounding_boxes) == 0:
             print(cc("RED", "Moving data files with no annotations, an exception will be thrown."))
             shutil.move(xml_file, f"{self.root_dir}/empty/annotations/")
-            shutil.move(xml_file.replace("\\annotations\\", "\\images\\").replace(".xml", ".jpeg"),
-                        f"{self.root_dir}/empty/images/")
+            shutil.move(xml_file.replace("\\annotations\\", "\\images\\").replace(".xml", ".jpeg"), f"{self.root_dir}/empty/images/")
             return
         return bounding_boxes
