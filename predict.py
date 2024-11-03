@@ -1,8 +1,6 @@
-import time
-
+import cv2
 import torch
 import torchvision
-import cv2
 from torchinfo import summary
 
 from cc import cc
@@ -19,7 +17,7 @@ label_map = {
 
 CUDA_AVAIL = torch.cuda.is_available()
 # CUDA_AVAIL = False  # Force CPU for testing
-DEVICE = torch.device("cuda" if CUDA_AVAIL else "cpu")  # CUDA is not working for some reason
+DEVICE = torch.device("cuda" if CUDA_AVAIL else "cpu")
 print(cc("BLUE", f"Using device: {DEVICE}"))
 print(cc("CYAN", f"CUDA available: {CUDA_AVAIL}"))
 if CUDA_AVAIL:
