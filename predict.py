@@ -66,7 +66,10 @@ model.to(DEVICE)
 model.eval()
 
 # Read and preprocess the image
-image = cv2.imread("dataset/images/test/000000000164.jpeg")
+# image = cv2.imread("dataset/images/test/000000000452.jpeg")
+image = cv2.imread("dataset/images/test/000000000455.jpeg")
+# image = cv2.imread("dataset/images/test/000000000457.jpeg")
+# image = cv2.imread("dataset/images/test/000000000489.jpeg")
 # image = cv2.resize(image, (512, 512))  # Resize to match the input size
 image = image / 255.0  # Normalize the image to values between 0 and 1
 image = torch.tensor(image, dtype=torch.float32).permute(2, 0, 1).unsqueeze(0).to(DEVICE)

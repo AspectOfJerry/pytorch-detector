@@ -20,6 +20,14 @@ dataset
     └── train
 ```
 
+### Run tensorboard
+
+To run tensorboard, use the following command:
+
+```bash
+tensorboard --logdir=./output/tensorboard_logs
+```
+
 ### Instructions
 
 To run the project in a Python virtual environment, run the following commands:

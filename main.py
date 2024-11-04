@@ -5,6 +5,7 @@ import time
 import torch
 import torchvision
 import torchvision.transforms as transforms
+from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 from torchvision.ops import box_iou
 
@@ -16,13 +17,16 @@ DATA_DIR = "./dataset"
 OUTPUT_DIR = "./output"  # make sure this directory exists
 model_save_path = os.path.join(OUTPUT_DIR, "inference_graph.pth")  # file name
 
-# Training parameters
-NUM_EPOCHS = 20  # Total training cycles
-BATCH_SIZE = 16  # Number of images per batch
+# Initialize TensorBoard SummaryWriter
+writer = SummaryWriter(log_dir=os.path.join(OUTPUT_DIR, "tensorboard_logs"))
 
-LEARNING_RATE = 0.001  # Initial step size, usually between 0.0001 and 0.01 ?
+# Training parameters
+NUM_EPOCHS = 36  # Total training cycles
+BATCH_SIZE = 32  # Number of images per batch
+
+LEARNING_RATE = 0.0003  # Initial step size, usually between 0.0001 and 0.01 ?
 STEP_SIZE = 6  # Interval (in epochs) to decay the learning rate, usually 20-30% of the total number of epochs ?
-GAMMA = 0.5  # Factor by which the learning rate decays, usually around 0.5 ?
+GAMMA = 0.670  # Factor by which the learning rate decays, usually around 0.5 ?
 
 # Creating the model
 print(cc("YELLOW", "Creating model..."))
@@ -81,9 +85,13 @@ data_transform_test = transforms.Compose([
 train_dataset = CustomDataset(DATA_DIR, "train", transform=data_transform_train, device=DEVICE)
 test_dataset = CustomDataset(DATA_DIR, "test", transform=data_transform_test, device=DEVICE)
 
+batches_per_epoch = math.ceil(len(train_dataset) / BATCH_SIZE)
+total_steps = math.ceil(len(train_dataset) / BATCH_SIZE) * NUM_EPOCHS
+
 print(cc("CYAN", f"Training dataset: {len(train_dataset)} images"))
-print(cc("CYAN", f"Batches per epoch: {math.ceil(len(train_dataset) / BATCH_SIZE)}"))
-print(cc("CYAN", f"Test dataset: {len(test_dataset)} images"))
+print(cc("CYAN", f"Batches per epoch: {batches_per_epoch}"))
+print(cc("CYAN", f"Total training batches: {total_steps}"))
+print(cc("CYAN", f"Validation dataset: {len(test_dataset)} images"))
 print("-------------------------")
 
 
@@ -126,7 +134,7 @@ for epoch in range(NUM_EPOCHS):
     model.train()
     epoch_timer = time.time()
     print(cc("GREEN", f"Beginning epoch {epoch + 1}/{NUM_EPOCHS}..."))
-    for images, targets in train_loader:
+    for step, (images, targets) in enumerate(train_loader):
         images = [image.to(DEVICE) for image in images]  # Move images to the correct device
         targets = [{k: v.to(DEVICE) for k, v in t.items()} for t in targets]  # Move targets to the correct device
 
@@ -143,10 +151,12 @@ for epoch in range(NUM_EPOCHS):
         total_loss.backward()  # Compute gradients
         optimizer.step()  # Update model parameters
 
-        # Update learning rate
-        # lr_scheduler.step()
+        # Log the loss and learning rate to TensorBoard
+        current_global_step = epoch * len(train_loader) + step
+        writer.add_scalar("Loss/total_loss", total_loss.item(), current_global_step)
+        writer.add_scalar("Learning Rate", optimizer.param_groups[0]['lr'], current_global_step)
 
-        print(cc("BLUE", f"Epoch [{epoch + 1}/{NUM_EPOCHS}]:"))
+        print(cc("BLUE", f"Epoch [{epoch + 1}/{NUM_EPOCHS}] - Step {current_global_step}/{total_steps}:"))
         print(cc("CYAN",
                  f"Total loss: {total_loss.item()}"
                  f"\nLearning rate: {optimizer.param_groups[0]['lr']}"))
@@ -170,6 +180,9 @@ for epoch in range(NUM_EPOCHS):
 
     # Step the scheduler after each epoch
     lr_scheduler.step()
+
+# Close the TensorBoard SummaryWriter
+writer.close()
 
 print(cc("GREEN", f"Training complete! Took {time.time() - start_time:.3f} seconds"))
 
