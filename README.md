@@ -28,7 +28,7 @@ To run tensorboard, use the following command:
 tensorboard --logdir=./output/tensorboard_logs
 ```
 
-### Instructions
+### venv
 
 To run the project in a Python virtual environment, run the following commands:
 
@@ -36,10 +36,52 @@ To run the project in a Python virtual environment, run the following commands:
 python -m venv venv
 ```
 
-Install the dependencies:
+## CPU-only
+
+Install the dependencies for CPU-only training using the following command:
+
+From PyTorch's website:
 
 ```bash
-pip install -r requirements.txt
+pip install torch torchvision torchaudio
+```
+
+or
+
+```bash
+pip install -r requirements-cpu.txt
+```
+
+```
+torch~=2.1.2
+torchvision~=0.16.2
+torchinfo~=1.8.0
+opencv-python~=4.10.0.84
+pillow~=10.3.0
+tensorboard~=2.18.0
+```
+
+## GPU (NVIDIA CUDA)
+
+From PyTorch's website:
+
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+```
+
+or
+
+```bash
+pip install -r requirements-gpu.txt
+```
+
+```
+torchvision~=0.20.1+cu124
+torchinfo~=1.8.0
+opencv-python~=4.10.0.84
+pillow~=10.3.0
+torch~=2.5.1+cu124
+tensorboard~=2.18.0
 ```
 
 If you have an NVIDIA GPU, you can install the CUDA toolkit and cuDNN to enable GPU support. If you don't have an NVIDIA GPU, skip the following steps.
@@ -55,8 +97,3 @@ If you have an NVIDIA GPU, you can install the CUDA toolkit and cuDNN to enable 
     - Copy the files from the `bin` folder to `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1\bin`
     - Copy the files from the `include` folder to `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1\include`
     - Copy the files from the `lib\x64` folder to `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1\lib\x64`
-- Download the dependencies using:
-
-```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
-```
