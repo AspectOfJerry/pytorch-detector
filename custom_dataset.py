@@ -72,6 +72,6 @@ class CustomDataset(torch.utils.data.Dataset):
         if len(bounding_boxes) == 0:
             print(cc("RED", "Moving data files with no annotations, an exception will be thrown."))
             shutil.move(xml_file, f"{self.root_dir}/empty/annotations/")
-            shutil.move(xml_file.replace("\\annotations\\", "\\images\\").replace(".xml", ".jpeg"), f"{self.root_dir}/empty/images/")
+            shutil.move(xml_file.replace("\\annotations\\", "\\images\\").replace(".xml", ".jpeg"), f"{self.root_dir}/temp/images/")
             return
         return bounding_boxes
